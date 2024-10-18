@@ -4,7 +4,7 @@ import re
 import numpy as np
 import pandas as pd
 from IPython.display import display
-from segmentation.utils import get_tiff_size, rename_invalid_marker
+from codex.segmentation.utils import get_tiff_size, rename_invalid_marker
 from tifffile import tifffile
 from tqdm import tqdm
 

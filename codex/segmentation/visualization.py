@@ -3,7 +3,7 @@ from typing import Optional
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import numpy as np
-from segmentation.segmentation import scale_marker_sum
+from codex.segmentation.segmentation import scale_marker_sum
 
 
 def plot_cropped_subregion(

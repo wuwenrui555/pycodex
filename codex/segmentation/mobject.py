@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from segmentation.segmentation import segmentation_mesmer
+from codex.segmentation.segmentation import segmentation_mesmer
 from tqdm import tqdm
 
 
