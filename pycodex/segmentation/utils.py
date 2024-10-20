@@ -1,6 +1,13 @@
 import re
 
+import pandas as pd
+from IPython.display import display
 import tifffile
+from tqdm import tqdm
+
+################################################################################
+# tiff
+################################################################################
 
 
 def get_tiff_size(tiff_path: str) -> dict[str, float]:
@@ -48,6 +55,31 @@ def get_tiff_size(tiff_path: str) -> dict[str, float]:
         return size_dict
 
 
+def display_pixel_size(metadata_dict: dict[str, pd.DataFrame], n: int = 1) -> None:
+    """
+    Display the unique pixel sizes from TIFF metadata.
+
+    Parameters:
+    metadata_dict (dict): Dictionary containing region names as keys and metadata DataFrames as values.
+    n (int, optional): The number of rows to extract from each DataFrame. Default is 1.
+
+    Returns:
+    None: Displays a DataFrame of unique pixel sizes (width or height in micrometers) found in the TIFF files.
+    """
+    path_list = [path for metadata_df in metadata_dict.values() for path in metadata_df.iloc[:n]["path"]]
+    size_df = []
+    for path in tqdm(path_list):
+        size_df.append(get_tiff_size(path))
+    size_df = pd.DataFrame(size_df)
+    size_df = size_df[["pixel_width_um", "pixel_height_um"]].drop_duplicates()
+    display(size_df)
+
+
+################################################################################
+# marker
+################################################################################
+
+
 def rename_invalid_marker(marker_name: str) -> str:
     """
     Rename the invalid marker name (containing "/" and ":").
@@ -84,3 +116,22 @@ def rename_duplicate_markers(marker_list: list[str]) -> list[str]:
             renamed_list.append(marker)
 
     return renamed_list
+
+
+def display_items(items: list[str], ncol: int = 10) -> None:
+    """
+    Display a list in tabular format.
+
+    Args:
+        marker_list (dict): Dictionary or list of markers to display in tabular form.
+        ncol (int): Number of columns to display in the output table.
+
+    Returns:
+        None: This function displays the DataFrame of markers.
+    """
+    ncol = min(ncol, len(items))
+    markers_df = pd.DataFrame(
+        [items[i : i + ncol] for i in range(0, len(items), ncol)],
+        columns=[i + 1 for i in range(ncol)],
+    ).fillna("")
+    display(markers_df)

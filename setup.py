@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="pycodex",
-    version="0.1.0",
+    version="0.1.1",
     description="Co-detection by indexing (CODEX) analysis using Python",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",

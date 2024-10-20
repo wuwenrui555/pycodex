@@ -7,9 +7,7 @@ from deepcell.applications import Mesmer
 from deepcell.utils.plot_utils import create_rgb_image, make_outline_overlay
 
 
-def scale_marker(
-    marker: str, marker_dict: dict[str, np.ndarray], scale: bool = True
-) -> np.ndarray:
+def scale_marker(marker: str, marker_dict: dict[str, np.ndarray], scale: bool = True) -> np.ndarray:
     """
     Scale image of a specific marker.
 
@@ -27,9 +25,7 @@ def scale_marker(
     return im_marker
 
 
-def scale_marker_sum(
-    marker_list: list[str], marker_dict: dict[str : np.ndarray], scale: bool = True
-) -> np.ndarray:
+def scale_marker_sum(marker_list: list[str], marker_dict: dict[str : np.ndarray], scale: bool = True) -> np.ndarray:
     """
     Sum scaled images of specified markers.
 
@@ -41,14 +37,10 @@ def scale_marker_sum(
     Returns:
         np.ndarray: Summed and scaled image of the specified markers.
     """
-    scale_marker_list = [
-        scale_marker(marker, marker_dict, scale=scale) for marker in marker_list
-    ]
+    scale_marker_list = [scale_marker(marker, marker_dict, scale=scale) for marker in marker_list]
     scale_marker_sum = np.sum(scale_marker_list, axis=0)
     scale_marker_sum = (
-        255
-        * (scale_marker_sum - scale_marker_sum.min())
-        / (scale_marker_sum.max() - scale_marker_sum.min())
+        255 * (scale_marker_sum - scale_marker_sum.min()) / (scale_marker_sum.max() - scale_marker_sum.min())
     ).astype("uint8")
     return scale_marker_sum
 
@@ -129,16 +121,12 @@ def extract_single_cell_info(
     data = np.zeros((label_num, channel_num))  # Sum of intensities for each marker
     data_scale_size = np.zeros((label_num, channel_num))  # Mean intensity per cell size
     cell_sizes = np.zeros((label_num, 1))  # Area of each cell
-    cell_props = np.zeros(
-        (label_num, 3)
-    )  # Label and centroid coordinates for each cell
+    cell_props = np.zeros((label_num, 3))  # Label and centroid coordinates for each cell
 
     for i, region in enumerate(stats):
         cell_label = region.label
         # Extract the pixel values for the current region from the counts array
-        label_counts = [
-            counts_no_noise[coord[0], coord[1], :] for coord in region.coords
-        ]
+        label_counts = [counts_no_noise[coord[0], coord[1], :] for coord in region.coords]
         data[i] = np.sum(label_counts, axis=0)  # Sum of marker intensities
         data_scale_size[i] = data[i] / region.area  # Average intensity per unit area
         cell_sizes[i] = region.area  # Store the area of the cell

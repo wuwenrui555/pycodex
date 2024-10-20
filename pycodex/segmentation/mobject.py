@@ -1,7 +1,15 @@
+import re
+
 import numpy as np
 import pandas as pd
-from codex.segmentation.segmentation import segmentation_mesmer
+from tifffile import tifffile
 from tqdm import tqdm
+
+from pycodex.segmentation.segmentation import segmentation_mesmer
+
+################################################################################
+# metadata_dict
+################################################################################
 
 
 def metadata_dict_subset_region(
@@ -21,6 +29,83 @@ def metadata_dict_subset_region(
     for region in region_list:
         subset_metadata_dict[region] = metadata_dict[region]
     return subset_metadata_dict
+
+
+def metadata_dict_summary_marker(
+    metadata_dict: dict[str, pd.DataFrame],
+) -> tuple[list[str], list[str], list[str], list[str]]:
+    """
+    Summarize marker information across regions.
+
+    Args:
+        metadata_dict (dict): Dictionary containing region names as keys and metadata DataFrames as values.
+
+    Returns:
+        tuple: Lists of unique markers, blank markers, duplicated markers, and markers missing in some regions.
+    """
+    # Get All unique markers
+    combined_metadata_df = pd.concat(metadata_dict.values(), ignore_index=True)
+    all_markers = combined_metadata_df["marker"].unique()
+
+    # Identify and filter out blank markers
+    blank_markers = [marker for marker in all_markers if re.match(r"blank", marker, re.IGNORECASE)]
+    metadata_df = combined_metadata_df.loc[~combined_metadata_df["marker"].isin(blank_markers)]
+    count_pivot = metadata_df.pivot_table(index="marker", columns="region", aggfunc="size", fill_value=0)
+
+    # Identify markers that are missing in some regions
+    missing_markers_n = (count_pivot == 0).sum(axis=1)
+    missing_markers_df = count_pivot.loc[missing_markers_n > 0]
+    missing_markers = list(missing_markers_df.index)
+
+    # Identify markers that are duplicated in some regions
+    duplicated_markers_n = (count_pivot > 1).sum(axis=1)
+    duplicated_markers_df = count_pivot.loc[duplicated_markers_n > 0]
+    duplicated_markers = list(duplicated_markers_df.index)
+
+    # Identify unique markers (not blank, not duplicated, and not missing in any region)
+    unique_markers = [
+        marker for marker in all_markers if marker not in (blank_markers + duplicated_markers + missing_markers)
+    ]
+    unique_markers = sorted(unique_markers)
+
+    # Display summary information
+    print(
+        f"Summary of Markers:\n"
+        f"- Total unique markers: {len(all_markers)}\n"
+        f"- Unique markers: {len(unique_markers)} {unique_markers}\n"
+        f"- Blank markers: {len(blank_markers)} {blank_markers}\n"
+        f"- Markers duplicated in some regions: {len(duplicated_markers)} {duplicated_markers}\n"
+        f"- Markers missing in some regions: {len(missing_markers)} {missing_markers}"
+    )
+    return unique_markers, blank_markers, duplicated_markers, missing_markers
+
+
+def organize_marker_object(
+    metadata_dict: dict[str, pd.DataFrame], marker_list: list[str]
+) -> dict[str, dict[str, np.ndarray]]:
+    """
+    Organize marker images by region.
+
+    Args:
+        metadata_dict (dict): Dictionary containing region names as keys and metadata DataFrames as values.
+        marker_list (list): List of markers to be organized.
+
+    Returns:
+        dict: Dictionary containing region names as keys and dictionaries of marker images as values.
+    """
+    marker_object = {}
+    for region, metadata_df in tqdm(metadata_dict.items()):
+        marker_dict = {}
+        for marker in marker_list:
+            marker_path = metadata_df["path"][metadata_df["marker"] == marker].item()
+            marker_dict[marker] = tifffile.imread(marker_path)
+        marker_object[region] = marker_dict
+    return marker_object
+
+
+################################################################################
+# marker_object
+################################################################################
 
 
 def marker_object_subset_region(
@@ -97,16 +182,14 @@ def marker_object_segmentation_mesmer(
     mask_object = {}
     for region, marker_dict in tqdm(marker_object.items()):
         mask_dict = {}
-        mask_dict["segmentation_mask"], mask_dict["rgb_image"], mask_dict["overlay"] = (
-            segmentation_mesmer(
-                boundary_markers=boundary_markers,
-                internal_markers=internal_markers,
-                marker_dict=marker_dict,
-                pixel_size_um=pixel_size_um,
-                scale=scale,
-                maxima_threshold=maxima_threshold,
-                interior_threshold=interior_threshold,
-            )
+        mask_dict["segmentation_mask"], mask_dict["rgb_image"], mask_dict["overlay"] = segmentation_mesmer(
+            boundary_markers=boundary_markers,
+            internal_markers=internal_markers,
+            marker_dict=marker_dict,
+            pixel_size_um=pixel_size_um,
+            scale=scale,
+            maxima_threshold=maxima_threshold,
+            interior_threshold=interior_threshold,
         )
         mask_object[region] = mask_dict
     return mask_object
