@@ -1,3 +1,5 @@
+import json
+import logging
 import os
 import re
 
@@ -6,7 +8,7 @@ import pandas as pd
 from tifffile import tifffile
 from tqdm import tqdm
 
-from pycodex.segmentation.segmentation import segmentation_mesmer
+from pycodex.segmentation.segmentation import extract_cell_features_from_segmentation, segmentation_mesmer
 
 ################################################################################
 # metadata_dict
@@ -157,7 +159,7 @@ def marker_object_crop_subregion(
 
 
 def marker_object_segmentation_mesmer(
-    output_dir: str, 
+    output_dir: str,
     marker_object: dict[str, dict[str, np.ndarray]],
     boundary_markers: list[str],
     internal_markers: list[str],
@@ -182,6 +184,19 @@ def marker_object_segmentation_mesmer(
     Returns:
         None: Save segmentation_mask, rgb_image, and overlay in the output directory.
     """
+    # write parameters
+    config = {
+        "boundary_markers": boundary_markers,
+        "internal_markers": internal_markers,
+        "pixel_size_um": pixel_size_um,
+        "scale": scale,
+        "maxima_threshold": maxima_threshold,
+        "interior_threshold": interior_threshold,
+    }
+    with open(f"{output_dir}/parameter_segmentation.json", "w", encoding="utf-8") as file:
+        json.dump(config, file, indent=4, ensure_ascii=False)
+
+    # segmentation
     os.makedirs(output_dir, exist_ok=True)
     for region, marker_dict in tqdm(marker_object.items()):
         try:
@@ -199,6 +214,52 @@ def marker_object_segmentation_mesmer(
             tifffile.imwrite(os.path.join(output_subdir, "segmentation_mask.tiff"), segmentation_mask.astype(np.uint32))
             tifffile.imwrite(os.path.join(output_subdir, "rgb_image.tiff"), rgb_image.astype(np.uint8))
             tifffile.imwrite(os.path.join(output_subdir, "overlay.tiff"), overlay.astype(np.uint8))
+            logging.info(f"{region}: Segmentation completed")
         except Exception as e:
-            print(f"[ERROR] Failed to process region '{region}': {e}")
+            logging.info(f"[ERROR] '{region}': Failed to process: {e}")
             continue
+
+
+def extract_cell_features(marker_dir: str, segmentation_dir: str) -> None:
+    """
+    Extract single-cell features from segmentation
+
+    Args:
+        marker_dir (str):
+            Path to the directory containing marker images. Each region should
+            have a subdirectory with corresponding marker files in TIFF format.
+
+        segmentation_dir (str):
+            Path to the directory containing segmentation masks. Each region should
+            have a subdirectory containing a "segmentation_mask.tiff" file.
+
+    Returns:
+        None: save the extracted single-cell features to CSV files.
+    """
+    marker_regions = os.listdir(marker_dir)
+    segmentation_regions = os.listdir(segmentation_dir)
+    single_cell_regions = [region for region in segmentation_regions if region in marker_regions]
+
+    for region in tqdm(single_cell_regions):
+        # segmentation mask
+        segmentation_subdir = os.path.join(segmentation_dir, region)
+        segmentation_mask_path = os.path.join(segmentation_subdir, "segmentation_mask.tiff")
+        segmentation_mask = tifffile.imread(segmentation_mask_path)
+        logging.info(f"{region}: Segmentation mask loaded")
+
+        # marker dictonary
+        marker_dict = {}
+        marker_subdir = os.path.join(marker_dir, region)
+        for marker in os.listdir(marker_subdir):
+            marker_name, marker_extension = os.path.splitext(marker)
+            if marker_extension in [".tiff", ".tif"]:
+                marker_path = os.path.join(marker_subdir, marker)
+                marker_dict[marker_name] = tifffile.imread(marker_path)
+        logging.info(f"{region}: Markers loaded")
+
+        # single cell features
+        data, data_scale_size = extract_cell_features_from_segmentation(marker_dict, segmentation_mask)
+        data.to_csv(os.path.join(segmentation_subdir, "data.csv"))
+        data_scale_size.to_csv(os.path.join(segmentation_subdir, "dataScaleSize.csv"))
+        logging.info(f"{region}: Single-cell features extraction completed")
+

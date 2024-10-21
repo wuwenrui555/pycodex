@@ -1,8 +1,6 @@
 import numpy as np
 import pandas as pd
-import skimage.io
-import skimage.measure
-import skimage.morphology
+import skimage.measure 
 from deepcell.applications import Mesmer
 from deepcell.utils.plot_utils import create_rgb_image, make_outline_overlay
 
@@ -96,11 +94,11 @@ def segmentation_mesmer(
     return segmentation_mask, rgb_image, overlay
 
 
-def extract_single_cell_info(
+def extract_cell_features_from_segmentation(
     marker_dict: dict[str, np.ndarray], segmentation_mask: np.ndarray
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Extract single cell information from a core.
+    Extract single cell features from segmeantaion mask.
 
     Args:
         marker_dict (dict): Dictionary containing marker names as keys and corresponding images as values.
@@ -109,110 +107,31 @@ def extract_single_cell_info(
     Returns:
         Tuple: DataFrames containing single cell data and size-scaled data.
     """
-    marker_name = [marker for marker in marker_dict.keys() if marker != "Empty"]
-    marker_array = [marker_dict[marker] for marker in marker_name]
-    counts_no_noise = np.stack(marker_array, axis=2)
+    marker_name = [marker for marker in marker_dict.keys()]
+    marker_array = np.stack([marker_dict[marker] for marker in marker_name], axis=2)
 
-    # Calculate properties of each segmented region
+    # extract properties
+    props = skimage.measure.regionprops_table(
+        segmentation_mask,
+        properties=["label", "area", "centroid"],
+    )
+    props_df = pd.DataFrame(props)
+    props_df.columns = ["cellLabel", "cellSize", "Y_cent", "X_cent"]
+
+    # exctract marker intensity
     stats = skimage.measure.regionprops(segmentation_mask)
-    label_num = len(stats)
-
-    channel_num = len(marker_array)
-    data = np.zeros((label_num, channel_num))  # Sum of intensities for each marker
-    data_scale_size = np.zeros((label_num, channel_num))  # Mean intensity per cell size
-    cell_sizes = np.zeros((label_num, 1))  # Area of each cell
-    cell_props = np.zeros((label_num, 3))  # Label and centroid coordinates for each cell
-
+    n_cell = len(stats)
+    n_marker = len(marker_name)
+    sums = np.zeros((n_cell, n_marker))  
+    avgs = np.zeros((n_cell, n_marker)) 
     for i, region in enumerate(stats):
-        cell_label = region.label
-        # Extract the pixel values for the current region from the counts array
-        label_counts = [counts_no_noise[coord[0], coord[1], :] for coord in region.coords]
-        data[i] = np.sum(label_counts, axis=0)  # Sum of marker intensities
-        data_scale_size[i] = data[i] / region.area  # Average intensity per unit area
-        cell_sizes[i] = region.area  # Store the area of the cell
-        cell_props[i] = [
-            cell_label,
-            region.centroid[0],
-            region.centroid[1],
-        ]  # Store label and centroid
+        # Extract the pixel values for the current region from the marker_array
+        label_counts = [marker_array[coord[0], coord[1], :] for coord in region.coords]
+        sums[i] = np.sum(label_counts, axis=0)  # Sum of marker intensities
+        avgs[i] = sums[i] / region.area  # Average intensity per unit area  
 
-    # Create DataFrames to store the cell data
-    data_df = pd.DataFrame(data, columns=marker_name)
-    data_full = pd.concat(
-        [
-            pd.DataFrame(cell_props, columns=["cellLabel", "Y_cent", "X_cent"]),
-            pd.DataFrame(cell_sizes, columns=["cellSize"]),
-            data_df,
-        ],
-        axis=1,
-    )
-
-    # Create DataFrames to store scaled cell data (intensity per unit size)
-    data_scale_size_df = pd.DataFrame(data_scale_size, columns=marker_name)
-    data_scale_size_full = pd.concat(
-        [
-            pd.DataFrame(cell_props, columns=["cellLabel", "Y_cent", "X_cent"]),
-            pd.DataFrame(cell_sizes, columns=["cellSize"]),
-            data_scale_size_df,
-        ],
-        axis=1,
-    )
-    return data_full, data_scale_size_full
-
-
-# def segmentation_mesmer_object(marker_object):
-#     """
-#     Process a single TMA.
-
-#     Args:
-#         folder_object (str): Path to the folder containing TMA data.
-#         path_parameter (str): Path to the parameter configuration file.
-#         tag (str): Tag to be used for output folder.
-#     """
-#     name_object = Path(folder_object).name
-
-#     folder_output = f"{folder_object}/segmentation/{tag}/"
-#     os.makedirs(folder_output, exist_ok=True)
-
-#     # Write parameter
-#     config = load_config(path_parameter)
-#     keys = [
-#         "boundary",
-#         "internal",
-#         "scale",
-#         "pixel_size_um",
-#         "maxima_threshold",
-#         "interior_threshold",
-#     ]
-#     config = {key: config.get(key) for key in keys}
-#     with open(
-#         f"{folder_output}/parameter_segmentation.json", "w", encoding="utf-8"
-#     ) as file:
-#         json.dump(config, file, indent=4, ensure_ascii=False)
-
-#     marker_dict = load_tiff_markers(f"{folder_object}/marker")
-#     logging.info("tiff loaded for segmentation")
-
-#     # Segmentation
-#     segmentation_mask, rgb_image, overlay = segmentation_mesmer(
-#         config["boundary"],
-#         config["internal"],
-#         marker_dict,
-#         config["scale"],
-#         config["pixel_size_um"],
-#         config["maxima_threshold"],
-#         config["interior_threshold"],
-#     )
-#     segmentation_mask = segmentation_mask[0, ..., 0]
-#     overlay = overlay[0, ...]
-#     tifffile.imwrite(f"{folder_output}/mesmer_mask.tiff", segmentation_mask)
-#     tifffile.imwrite(f"{folder_output}/mesmer_overlay.tiff", overlay)
-#     logging.info(f"Segmentation completed for {name_object}")
-
-#     # Extract single cell information
-#     data_full, data_scale_size_full = extract_single_cell_info(
-#         marker_dict, segmentation_mask
-#     )
-#     data_full.to_csv(f"{folder_output}/data.csv", index=False)
-#     data_scale_size_full.to_csv(f"{folder_output}/dataScaleSize.csv", index=False)
-#     logging.info(f"Single cell information extracted for {name_object}")
+    sums_df = pd.DataFrame(sums, columns=marker_name)
+    avgs_df = pd.DataFrame(avgs, columns=marker_name)
+    data = pd.concat([props_df, sums_df], axis=1)
+    data_scale_size = pd.concat([props_df, avgs_df], axis=1)
+    return data, data_scale_size
