@@ -1,3 +1,4 @@
+import os
 import re
 
 import numpy as np
@@ -156,6 +157,7 @@ def marker_object_crop_subregion(
 
 
 def marker_object_segmentation_mesmer(
+    output_dir: str, 
     marker_object: dict[str, dict[str, np.ndarray]],
     boundary_markers: list[str],
     internal_markers: list[str],
@@ -163,11 +165,12 @@ def marker_object_segmentation_mesmer(
     scale: bool = True,
     maxima_threshold: float = 0.075,
     interior_threshold: float = 0.20,
-) -> dict[str, dict[str, np.ndarray]]:
+) -> None:
     """
     Perform segmentation (Mesmer) on each image in the marker object.
 
     Args:
+        output_dir (str): Directory for segmentation output files.
         marker_object (dict): Dictionary containing regions as keys and marker dictionaries as values.
         boundary_markers (list): List of boundary marker names.
         internal_markers (list): List of internal marker names.
@@ -177,19 +180,25 @@ def marker_object_segmentation_mesmer(
         interior_threshold (float, optional): Interior threshold, larger for larger cells. Defaults to 0.20.
 
     Returns:
-        dict: A mask object with segmentation mask, RGB image, and overlay for each region.
+        None: Save segmentation_mask, rgb_image, and overlay in the output directory.
     """
-    mask_object = {}
+    os.makedirs(output_dir, exist_ok=True)
     for region, marker_dict in tqdm(marker_object.items()):
-        mask_dict = {}
-        mask_dict["segmentation_mask"], mask_dict["rgb_image"], mask_dict["overlay"] = segmentation_mesmer(
-            boundary_markers=boundary_markers,
-            internal_markers=internal_markers,
-            marker_dict=marker_dict,
-            pixel_size_um=pixel_size_um,
-            scale=scale,
-            maxima_threshold=maxima_threshold,
-            interior_threshold=interior_threshold,
-        )
-        mask_object[region] = mask_dict
-    return mask_object
+        try:
+            segmentation_mask, rgb_image, overlay = segmentation_mesmer(
+                boundary_markers=boundary_markers,
+                internal_markers=internal_markers,
+                marker_dict=marker_dict,
+                pixel_size_um=pixel_size_um,
+                scale=scale,
+                maxima_threshold=maxima_threshold,
+                interior_threshold=interior_threshold,
+            )
+            output_subdir = os.path.join(output_dir, region)
+            os.makedirs(output_subdir, exist_ok=True)
+            tifffile.imwrite(os.path.join(output_subdir, "segmentation_mask.tiff"), segmentation_mask.astype(np.uint32))
+            tifffile.imwrite(os.path.join(output_subdir, "rgb_image.tiff"), rgb_image.astype(np.uint8))
+            tifffile.imwrite(os.path.join(output_subdir, "overlay.tiff"), overlay.astype(np.uint8))
+        except Exception as e:
+            print(f"[ERROR] Failed to process region '{region}': {e}")
+            continue

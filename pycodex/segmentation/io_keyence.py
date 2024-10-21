@@ -45,17 +45,17 @@ def get_marker_metadata(region_dir: str) -> tuple[str, pd.DataFrame]:
     return region, metadata_df
 
 
-def organize_metadata(final_dir: str) -> dict[str, pd.DataFrame]:
+def organize_metadata(marker_dir: str) -> dict[str, pd.DataFrame]:
     """
     Organize metadata for all regions in the final directory.
 
     Args:
-        final_dir (str): Directory containing subdirectories for each region.
+        marker_dir (str): Directory containing subdirectories for each region.
 
     Returns:
         dict: Dictionary containing region names as keys and metadata DataFrames as values.
     """
-    region_dirs = [os.path.join(final_dir, subdir) for subdir in os.listdir(final_dir)]
+    region_dirs = [os.path.join(marker_dir, subdir) for subdir in os.listdir(marker_dir)]
     metadata_dict = {}
     for region_dir in region_dirs:
         region, metadata_df = get_marker_metadata(region_dir)
