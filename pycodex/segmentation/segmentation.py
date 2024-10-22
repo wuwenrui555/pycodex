@@ -43,10 +43,14 @@ def scale_marker_sum(marker_list: list[str], marker_dict: dict[str : np.ndarray]
     return scale_marker_sum
 
 
+################################################################################
+# marker_dict
+################################################################################
+
 def segmentation_mesmer(
+    marker_dict: dict[str : np.ndarray],
     boundary_markers: list[str],
     internal_markers: list[str],
-    marker_dict: dict[str : np.ndarray],
     pixel_size_um: float,
     scale: bool = True,
     maxima_threshold: float = 0.075,
@@ -56,9 +60,9 @@ def segmentation_mesmer(
     Perform segmentation (Mesmer) on a given image.
 
     Args:
+        marker_dict (dict): Dictionary containing marker names as keys and corresponding images as values.
         boundary_markers (list): List of boundary marker names.
         internal_markers (list): List of internal marker names.
-        marker_dict (dict): Dictionary containing marker names as keys and corresponding images as values.
         pixel_size_um (float): Pixel size in micrometers.
         scale (bool, optional): Whether to scale the images or not. Defaults to True.
         maxima_threshold (float, optional): Maxima threshold, larger for fewer cells. Defaults to 0.075.
