@@ -184,6 +184,8 @@ def marker_object_segmentation_mesmer(
     Returns:
         None: Save segmentation_mask, rgb_image, and overlay in the output directory.
     """
+    os.makedirs(output_dir, exist_ok=True)
+
     # write parameters
     config = {
         "boundary_markers": boundary_markers,
@@ -197,7 +199,6 @@ def marker_object_segmentation_mesmer(
         json.dump(config, file, indent=4, ensure_ascii=False)
 
     # segmentation
-    os.makedirs(output_dir, exist_ok=True)
     for region, marker_dict in tqdm(marker_object.items()):
         try:
             segmentation_mask, rgb_image, overlay = segmentation_mesmer(
