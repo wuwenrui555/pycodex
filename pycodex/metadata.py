@@ -80,6 +80,7 @@ def organize_marker_dict(metadata_dict: dict[str, pd.DataFrame], region: str, ma
     marker_dict = {}
     metadata_df = metadata_dict[region]
     for marker in tqdm(marker_list):
+        # print(marker)
         marker_path = metadata_df["path"][metadata_df["marker"] == marker].item()
         marker_dict[marker] = tifffile.imread(marker_path)
     return marker_dict

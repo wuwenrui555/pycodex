@@ -133,10 +133,11 @@ def segmentation_mesmer(
     with open(f"{output_dir}/parameter_segmentation.json", "w", encoding="utf-8") as file:
         json.dump(config, file, indent=4, ensure_ascii=False)
 
+    unique_markers, _, _, _ = metadata.summary_markers(metadata_dict)
     for region in tqdm(regions):
-        metadata_df = metadata_dict[region]
-        all_markers = list(metadata_df["marker"])
-        marker_dict = metadata.organize_marker_dict(metadata_dict, region, all_markers)
+        marker_dict = metadata.organize_marker_dict(metadata_dict, region, unique_markers)
+        logging.info(f"{region}: Markers loaded")
+
         try:
             # segmentation
             segmentation_mask, rgb_image, overlay = markerim.segmentation_mesmer(
