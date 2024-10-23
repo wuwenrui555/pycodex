@@ -1,26 +1,47 @@
 import numpy as np
 import pandas as pd
-import skimage.measure 
+
+import skimage.measure
 from deepcell.applications import Mesmer
 from deepcell.utils.plot_utils import create_rgb_image, make_outline_overlay
 
 
-def scale_marker(marker: str, marker_dict: dict[str, np.ndarray], scale: bool = True) -> np.ndarray:
+########################################################################################################################
+# subset
+########################################################################################################################
+
+
+def subset_subregion(
+    marker_dict: dict[str, np.ndarray],
+    x_min: int,
+    x_max: int,
+    y_min: int,
+    y_max: int,
+) -> dict[str, np.ndarray]:
     """
-    Scale image of a specific marker.
+    Crop a specified subregion from each image in the marker dictionary.
 
     Args:
-        marker (str): The name of the marker to be scaled.
-        marker_dict (dict): Dictionary containing marker names askeys and corresponding images as values.
-        scale (bool, optional): Whether to scale the image or not. Defaults to True.
+        marker_dict (dict[str, np.ndarray]):
+            Dictionary containing marker names as keys and corresponding images as values.
+        x_min (int): Minimum x-coordinate of the subregion.
+        x_max (int): Maximum x-coordinate of the subregion.
+        y_min (int): Minimum y-coordinate of the subregion.
+        y_max (int): Maximum y-coordinate of the subregion.
 
     Returns:
-        np.ndarray: Scaled image of the specified marker.
+        dict[str, np.ndarray]: A new dictionary with cropped images.
     """
-    im_marker = marker_dict[marker]
-    if scale:
-        im_marker = (im_marker - im_marker.min()) / (im_marker.max() - im_marker.min())
-    return im_marker
+    cropped_marker_dict = {}
+    for marker, im in marker_dict.items():
+        cropped_im = im[y_min:y_max, x_min:x_max]
+        cropped_marker_dict[marker] = cropped_im
+    return cropped_marker_dict
+
+
+########################################################################################################################
+# segmentation
+########################################################################################################################
 
 
 def scale_marker_sum(marker_list: list[str], marker_dict: dict[str : np.ndarray], scale: bool = True) -> np.ndarray:
@@ -35,17 +56,21 @@ def scale_marker_sum(marker_list: list[str], marker_dict: dict[str : np.ndarray]
     Returns:
         np.ndarray: Summed and scaled image of the specified markers.
     """
-    scale_marker_list = [scale_marker(marker, marker_dict, scale=scale) for marker in marker_list]
-    scale_marker_sum = np.sum(scale_marker_list, axis=0)
-    scale_marker_sum = (
-        255 * (scale_marker_sum - scale_marker_sum.min()) / (scale_marker_sum.max() - scale_marker_sum.min())
-    ).astype("uint8")
-    return scale_marker_sum
+    scaled_marker_list = [
+        (marker_dict[marker] - marker_dict[marker].min()) / (marker_dict[marker].max() - marker_dict[marker].min())
+        if scale
+        else marker_dict[marker]
+        for marker in marker_list
+    ]
+    scaled_marker_sum = np.sum(scaled_marker_list, axis=0)
+    # scaled_marker_sum = (
+    #     255 * (scaled_marker_sum - scaled_marker_sum.min()) / (scaled_marker_sum.max() - scaled_marker_sum.min())
+    # ).astype("uint8")
+    scaled_marker_sum = (scaled_marker_sum - scaled_marker_sum.min()) / (
+        scaled_marker_sum.max() - scaled_marker_sum.min()
+    )
+    return scaled_marker_sum
 
-
-################################################################################
-# marker_dict
-################################################################################
 
 def segmentation_mesmer(
     marker_dict: dict[str : np.ndarray],
@@ -98,7 +123,7 @@ def segmentation_mesmer(
     return segmentation_mask, rgb_image, overlay
 
 
-def extract_cell_features_from_segmentation(
+def extract_cell_features(
     marker_dict: dict[str, np.ndarray], segmentation_mask: np.ndarray
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
@@ -126,13 +151,13 @@ def extract_cell_features_from_segmentation(
     stats = skimage.measure.regionprops(segmentation_mask)
     n_cell = len(stats)
     n_marker = len(marker_name)
-    sums = np.zeros((n_cell, n_marker))  
-    avgs = np.zeros((n_cell, n_marker)) 
+    sums = np.zeros((n_cell, n_marker))
+    avgs = np.zeros((n_cell, n_marker))
     for i, region in enumerate(stats):
         # Extract the pixel values for the current region from the marker_array
         label_counts = [marker_array[coord[0], coord[1], :] for coord in region.coords]
         sums[i] = np.sum(label_counts, axis=0)  # Sum of marker intensities
-        avgs[i] = sums[i] / region.area  # Average intensity per unit area  
+        avgs[i] = sums[i] / region.area  # Average intensity per unit area
 
     sums_df = pd.DataFrame(sums, columns=marker_name)
     avgs_df = pd.DataFrame(avgs, columns=marker_name)

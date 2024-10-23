@@ -3,7 +3,12 @@ from typing import Optional
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import numpy as np
-from pycodex.segmentation.segmentation import scale_marker_sum
+
+from pycodex.markerim import scale_marker_sum
+
+########################################################################################################################
+# segmentation test
+########################################################################################################################
 
 
 def plot_cropped_subregion(
@@ -18,18 +23,18 @@ def plot_cropped_subregion(
     Plots an image with a highlighted subregion and the cropped subregion side-by-side.
 
     Args:
-        im (np.ndarray): 
+        im (np.ndarray):
             The input image as a NumPy array.
-        x_mid (int): 
+        x_mid (int):
             The x-coordinate of the center of the subregion to be cropped.
-        y_mid (int): 
+        y_mid (int):
             The y-coordinate of the center of the subregion to be cropped.
-        length (int): 
+        length (int):
             The length of the square subregion to be cropped.
-        figsize (tuple[int, int], optional): 
+        figsize (tuple[int, int], optional):
             The size of the figure to be displayed in inches. Default is (10, 10).
-        cmap (Optional[str], optional): 
-            The colormap for displaying the image. If None, the default colormap is used. 
+        cmap (Optional[str], optional):
+            The colormap for displaying the image. If None, the default colormap is used.
             Default is None.
 
     Returns:
@@ -134,7 +139,8 @@ def plot_scale_marker_sum_segmentation(
     marker_lists: list[list[str]],
     title_list: list[str],
     marker_dict: dict[str, np.ndarray],
-    mask_dict: dict[str, np.ndarray],
+    segmentation_mask: np.ndarray,
+    overlay: np.ndarray,
     scale: bool = True,
     vmax: Optional[float] = None,
     alpha: float = 0.75,
@@ -150,9 +156,10 @@ def plot_scale_marker_sum_segmentation(
             A list of titles for each subplot, corresponding to the marker lists.
         marker_dict (dict[str, np.ndarray]):
             A dictionary mapping marker names to their corresponding image data.
-        mask_dict (dict[str, np.ndarray]):
-            A dictionary containing segmentation masks and overlays.
-            Should contain keys `"segmentation_mask"` and `"overlay"`.
+        segmentation_mask (np.ndarray):
+            Segmentation mask for the single cells.
+        overlay (np.ndarray):
+            Segmentation overlay for drawing segmentation contours.
         scale (bool, optional):
             If True, scales marker values. Defaults to True.
         vmax (Optional[float], optional):
@@ -183,7 +190,7 @@ def plot_scale_marker_sum_segmentation(
             segmentation_mask (np.ndarray):
                 Segmentation mask for the single cells.
             overlay (np.ndarray):
-                Overlay for drawing segmentation contours.
+                Segmentation overlay for drawing segmentation contours.
 
         Returns:
             tuple: A tuple containing:
@@ -214,24 +221,22 @@ def plot_scale_marker_sum_segmentation(
         axs[row, 0].set_ylabel(label, rotation=90, fontsize=12, ha="center")
 
     for i, marker_im in enumerate(im_list):
-        marker_im_in, marker_im_out, argb_overlay = _im_in_out_segmentation(
-            marker_im, mask_dict["segmentation_mask"], mask_dict["overlay"]
-        )
-        axs[0, i].imshow(marker_im)
+        marker_im_in, marker_im_out, argb_overlay = _im_in_out_segmentation(marker_im, segmentation_mask, overlay)
+        axs[0, i].imshow(marker_im, vmax=vmax)
         axs[0, i].set_title(title_list[i])
         axs[0, i].set_xticks([])
         axs[0, i].set_yticks([])
 
-        axs[1, i].imshow(marker_im_in)
+        axs[1, i].imshow(marker_im_in, vmax=vmax)
         axs[1, i].set_xticks([])
         axs[1, i].set_yticks([])
 
-        axs[2, i].imshow(marker_im)
+        axs[2, i].imshow(marker_im, vmax=vmax)
         axs[2, i].imshow(argb_overlay, alpha=alpha)
         axs[2, i].set_xticks([])
         axs[2, i].set_yticks([])
 
-        axs[3, i].imshow(marker_im_out)
+        axs[3, i].imshow(marker_im_out, vmax=vmax)
         axs[3, i].set_xticks([])
         axs[3, i].set_yticks([])
 
