@@ -6,8 +6,6 @@ from IPython.display import display
 from tifffile import tifffile
 from tqdm import tqdm
 
-from pycodex.utils import get_tiff_size
-
 ########################################################################################################################
 # summary marker
 ########################################################################################################################
@@ -103,6 +101,8 @@ def display_pixel_size(metadata_dict: dict[str, pd.DataFrame], n: int = 1) -> No
     Returns:
     None: Displays a DataFrame of unique pixel sizes (width or height in micrometers) found in the TIFF files.
     """
+    from pycodex.utils import get_tiff_size
+
     path_list = [path for metadata_df in metadata_dict.values() for path in metadata_df.iloc[:n]["path"]]
     size_df = []
     for path in tqdm(path_list):
