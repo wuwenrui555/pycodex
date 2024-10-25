@@ -21,18 +21,11 @@ class SIFTMatcher:
         """
         Initializes the SIFT matcher object with source and destination images.
 
-        Parameters:
-        - im_src (ndarray): Source image in grayscale where keypoints and descriptors will be detected.
-        - im_dst (ndarray): Destination image in grayscale for matching keypoints from the source image.
-        - nfeatures (int): The maximum number of features to retain in SIFT detection. Default is 10000.
-
-        Attributes:
-        - kp1: Keypoints detected in the source image.
-        - des1: Descriptors corresponding to the source image keypoints.
-        - kp2: Keypoints detected in the destination image.
-        - des2: Descriptors corresponding to the destination image keypoints.
-        - matches: All matches found between source and destination descriptors using K-Nearest Neighbors (k=2).
-        - good_matches: Matches that pass the ratio test to filter out weak matches.
+        Args:
+            im_src (ndarray): Source image in grayscale where keypoints and descriptors will be detected.
+            im_dst (ndarray): Destination image in grayscale for matching keypoints from the source image.
+            nfeatures (int, optional): The maximum number of features to retain in SIFT detection. Default is 10000.
+            step (int, optional): Step size for downsampling the images to speed up computation. Default is 8.
         """
         if im_src.dtype.name == "uint16":
             im_src = (im_src / 256).astype("uint8")
@@ -55,16 +48,13 @@ class SIFTMatcher:
 
     def find_kp_intersections(self, ratio_min=0.1, ratio_max=0.9, ratio_step=0.05):
         """
-        Find the best Lowe ratio threshold that minimizes intersecting matches.
+        Get the number of keypoint connection intersections across different Lowe ratio thresholds to determine the
+        optimal value that reduces intersecting matches.
 
         Args:
-            matches (list): A list of match pairs obtained from feature matching.
-            kp1 (list): A list of keypoints from the first image.
-            kp2 (list): A list of keypoints from the second image.
-
-        Returns:
-            tuple: The optimal Lowe ratio (float) and the minimum number of
-                intersecting matches (int).
+            ratio_min (float): The minimum ratio to start with. Default is 0.1.
+            ratio_max (float): The maximum ratio to end with. Default is 0.9.
+            ratio_step (float): The step size for changing the ratio. Default is 0.05.
         """
 
         def ccw(A, B, C):
@@ -119,6 +109,15 @@ class SIFTMatcher:
         )
 
     def plot_kp_intersections(self, figsize=(10, 5)):
+        """
+        Plots the percentage of intersecting matches for different Lowe's ratio thresholds.
+
+        Args:
+            figsize (tuple): The size of the figure for the plot. Default is (10, 5).
+
+        Returns:
+            matplotlib.figure.Figure: The generated figure object.
+        """
         ratios = self.intersections["ratio"]
         percentages = self.intersections["percentage"]
 
@@ -132,17 +131,21 @@ class SIFTMatcher:
 
         plt.tight_layout()
         plt.close(fig)
+
         return fig
 
     def set_lowe_ratio_threshold(self, ratio_threshold=0.60, figsize=(15, 15)):
         """
         Filters the matches based on Lowe's ratio test and plots the matching result.
 
-        Parameters:
-        - ratio_threshold (float): A threshold value for Lowe's ratio test to determine good matches.
-          Matches with a ratio of the distance between the closest and second-closest neighbors
-          lower than this threshold will be considered good matches. Default is 0.60.
-        - figsize (tuple): The size of the figure for plotting the matched features. Default is (15, 15).
+        Args:
+            ratio_threshold (float, optional): A threshold value for Lowe's ratio test to determine good matches.
+                Matches with a ratio of the distance between the closest and second-closest neighbors
+                lower than this threshold will be considered good matches. Default is 0.60.
+            figsize (tuple, optional): The size of the figure for plotting the matched features. Default is (15, 15).
+
+        Returns:
+            matplotlib.figure.Figure: The generated figure object.
         """
         print("Apply Lowe's ratio threshold")
         self.ratio_threshold = ratio_threshold
@@ -158,22 +161,25 @@ class SIFTMatcher:
             outImg=None,
             flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS,
         )
-        fig = plt.figure(figsize=figsize)
-        ax = fig.add_subplot(1, 1, 1)
-        ax.imshow(img_matches)
+
+        fig, ax = plt.subplots(figsize=figsize)
+        ax.imshow(img_matches)        
         plt.close(fig)
+        
         return fig
 
     def compute_affine_matrix(self, ratio_threshold=None):
         """
         Computes the affine transformation matrix between the source and destination images.
 
-        Parameters:
-        - ratio_threshold (float): A threshold value for Lowe's ratio test to determine good matches. Default is 0.60.
+        Args:
+            ratio_threshold (float, optional): A threshold value for Lowe's ratio test to determine good matches. 
+                Default is 0.60.
 
         Returns:
-        - H (ndarray): The 2x3 affine transformation matrix from source image to destination image.
-        - H_inverse (ndarray): The 2x3 inverse affine transformation matrix from destination image to source image.
+            tuple: A tuple containing:
+                - ndarray: The 2x3 affine transformation matrix from source image to destination image.
+                - ndarray: The 2x3 inverse affine transformation matrix from destination image to source image.
         """
         if ratio_threshold is None:
             ratio_threshold = self.ratio_threshold
@@ -193,16 +199,17 @@ class SIFTMatcher:
 
 def apply_affine_transformation(im_src, im_dst, H_inverse):
     """
-    Applies an affine transformation to warp the source image to the destination image's coordinate space
+    Applies an affine transformation to warp the source image to the destination image's coordinate space.
 
-    Parameters:
-    - im_src (np.ndarray): The source image to be transformed.
-    - im_dst (np.ndarray): The destination image (used for shape reference).
-    - H_inverse (np.ndarray): The inverse affine transformation matrix.
+    Args:
+        im_src (ndarray): The source image to be transformed.
+        im_dst (ndarray): The destination image (used for shape reference).
+        H_inverse (ndarray): The inverse affine transformation matrix from destination image to source image.
 
     Returns:
-    - transformed_im_src (np.ndarray): The transformed source image.
-    - blank_mask (np.ndarray): A boolean mask marking out-of-bounds regions (where value == 0).
+        tuple: A tuple containing:
+            - ndarray: The transformed source image.
+            - ndarray: A boolean mask marking out-of-bounds regions (where value == 0).
     """
     # Generate grid coordinates for the destination image
     output_shape = im_dst.shape
@@ -235,12 +242,12 @@ def apply_blank_mask(im, blank_mask):
     """
     Applies a blank mask to an image, setting masked regions to 0.
 
-    Parameters:
-    - im (np.ndarray): The input image to be masked.
-    - blank_mask (np.ndarray): A boolean mask where True indicates out-of-bounds regions.
+    Args:
+        im (ndarray): The input image to be masked.
+        blank_mask (ndarray): A boolean mask where True indicates out-of-bounds regions.
 
     Returns:
-    - masked_im (np.ndarray): The masked image with out-of-bounds regions set to 0.
+        ndarray: The masked image with out-of-bounds regions set to 0.
     """
     im[blank_mask] = 0
     masked_im = np.clip(im, 0, 65535).astype(np.uint16)
