@@ -221,18 +221,22 @@ def apply_affine_transformation(im_src, im_dst, H_inverse):
     src_x = src_coords[0, :].reshape(output_shape)
     src_y = src_coords[1, :].reshape(output_shape)
 
-    # Add 1 to the source image to distinguish valid pixels from out-of-bounds areas (value == 0)
-    im_src += 1
+    # Check for out-of-bounds coordinates before interpolation
+    valid_mask = (src_x >= 0) & (src_x < im_src.shape[1]) & (src_y >= 0) & (src_y < im_src.shape[0])
+
+    # Initialize the transformed image with zeros (for out-of-bounds regions)
+    transformed_im_src = np.zeros(output_shape, dtype=im_src.dtype)
 
     # order=1: bilinear interpolation is used to estimate the pixel value non-integer coordinates
     # mode="constant", cval=0: fills the out-of-bounds coordinates with a constant 0.
-    transformed_im_src = map_coordinates(im_src, [src_y, src_x], order=1, mode="constant", cval=0)
+    transformed_im_src[valid_mask] = map_coordinates(
+        im_src, [src_y[valid_mask], src_x[valid_mask]], order=1, mode="constant", cval=0
+    )
 
-    # Create a mask indicating out-of-bounds regions in the transformed image
-    blank_mask = transformed_im_src == 0
+    # Create a mask for out-of-bounds regions (where valid_mask is False)
+    blank_mask = ~valid_mask
 
-    # Subtract 1 from the transformed image to restore original value range and convert to uint16 range [0, 65535]
-    transformed_im_src -= 1
+    # Ensure the transformed image values are within the valid range and convert to uint16
     transformed_im_src = np.clip(transformed_im_src, 0, 65535).astype(np.uint16)
 
     return transformed_im_src, blank_mask
