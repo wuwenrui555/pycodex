@@ -197,13 +197,13 @@ class SIFTMatcher:
         return H, H_inverse
 
 
-def apply_affine_transformation(im_src, im_dst, H_inverse):
+def apply_affine_transformation(im_src: np.ndarray, output_shape: tuple[int, int], H_inverse: np.ndarray):
     """
     Applies an affine transformation to warp the source image to the destination image's coordinate space.
 
     Args:
         im_src (ndarray): The source image to be transformed.
-        im_dst (ndarray): The destination image (used for shape reference).
+        output_shape (tuple): Shape of output image (height, width), which is the shape of destination image generally.
         H_inverse (ndarray): The inverse affine transformation matrix from destination image to source image.
 
     Returns:
@@ -212,7 +212,6 @@ def apply_affine_transformation(im_src, im_dst, H_inverse):
             - ndarray: A boolean mask marking out-of-bounds regions (where value == 0).
     """
     # Generate grid coordinates for the destination image
-    output_shape = im_dst.shape
     dst_y, dst_x = np.indices(output_shape)
     dst_coords = np.stack([dst_x.ravel(), dst_y.ravel(), np.ones(dst_x.size)])
 
