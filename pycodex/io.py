@@ -1,7 +1,46 @@
+import logging
 import os
 import re
 
 import pandas as pd
+import tensorflow as tf
+
+########################################################################################################################
+# setup
+########################################################################################################################
+
+
+def setup_gpu(gpu_ids="0", log_level=logging.INFO):
+    """
+    Configures TensorFlow to use specified GPU(s) with memory growth enabled.
+
+    Args:
+        gpu_ids (str): Comma-separated GPU IDs to be made visible (e.g., "0,1").
+        log_level (int): Logging level, default is logging.INFO.
+
+    Returns:
+        None
+    """
+    # Configure logging
+    logging.basicConfig(level=log_level, format="%(asctime)s - %(levelname)s - %(message)s")
+
+    # Specify which GPU(s) to use
+    os.environ["CUDA_VISIBLE_DEVICES"] = gpu_ids
+
+    try:
+        # Get available GPU devices
+        gpus = tf.config.list_physical_devices("GPU")
+        if gpus:
+            # Enable memory growth for each GPU
+            for gpu in gpus:
+                tf.config.experimental.set_memory_growth(gpu, True)
+            logging.info(f"Using GPU(s): {[gpu.name for gpu in gpus]}")
+        else:
+            logging.info("No GPU detected, using CPU.")
+    except RuntimeError as e:
+        # Handle any runtime errors (e.g., GPUs already initialized)
+        logging.error(f"GPU setup failed: {e}")
+
 
 ########################################################################################################################
 # rename marker
