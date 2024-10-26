@@ -243,3 +243,4 @@ def crop_image_into_blocks(
                 dtype = im.dtype.type
                 im_sm = (im[y_beg:y_end, x_beg:x_end]).astype(dtype)
                 tifffile.imwrite(output_path, im_sm)
+        logging.info(f"{region}: Cropping completed") 

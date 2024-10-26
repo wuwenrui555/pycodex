@@ -220,4 +220,6 @@ def plot_block_labels(image: np.ndarray, xy_limits: dict[str, tuple[int, int, in
         )
 
     plt.axis("on")
+    plt.close(fig)
+
     return fig
