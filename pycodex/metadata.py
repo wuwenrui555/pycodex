@@ -3,7 +3,6 @@ import re
 import pandas as pd
 import tifffile
 from IPython.display import display
-from tifffile import tifffile
 from tqdm import tqdm
 
 ########################################################################################################################
@@ -55,7 +54,7 @@ def summary_markers(
         f"- Unique markers: {len(unique_markers)} {unique_markers}\n"
         f"- Blank markers: {len(blank_markers)} {blank_markers}\n"
         f"- Markers duplicated in some regions: {len(duplicated_markers)} {duplicated_markers}\n"
-        f"- Markers missing in some regions: {len(missing_markers)} {missing_markers}"
+        f"- Markers missing in some regions: {len(missing_markers)} {missing_markers}\n"
     )
     return unique_markers, blank_markers, duplicated_markers, missing_markers
 

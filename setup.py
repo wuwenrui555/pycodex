@@ -8,7 +8,7 @@ setup(
     long_description_content_type="text/markdown",
     author="wuwenrui555",
     author_email="wuwenruiwwr@outlook.com",
-    url="https://github.com/wuwenrui555/codex", 
+    url="https://github.com/SizunJiangLab/pycodex", 
     packages=find_packages(),
     install_requires=[],
     classifiers=[
