@@ -10,20 +10,78 @@ import tensorflow as tf
 ########################################################################################################################
 
 
-def setup_gpu(gpu_ids="0", log_level=logging.INFO):
+def setup_logging(
+    log_file=os.path.join(os.getcwd(), "output.log"),
+    log_format="%(asctime)s - %(levelname)s - %(message)s",
+    log_mode="w",
+    logger_level=logging.WARNING,
+    file_handler_level=logging.WARNING,
+    stream_handler_level=logging.INFO,
+):
+    """
+    Configures logging to output messages to both a file and the console.
+
+    Parameters
+    ----------
+    log_file : str, optional
+        Path to the log file. Default is 'output.log' in the current working directory.
+    log_format : str, optional
+        Format for log messages. Default includes timestamp, log level, and message.
+    log_mode : str, optional
+        File mode for the log file. Default is 'w' (write mode, overwrites file).
+    logger_level : int, optional
+        Logging level for the root logger. Default is logging.WARNING.
+    file_handler_level : int, optional
+        Logging level for the FileHandler. Default is logging.WARNING.
+    stream_handler_level : int, optional
+        Logging level for the StreamHandler (console output). Default is logging.INFO.
+
+    Returns
+    -------
+    None
+        This function configures the logger and does not return any value.
+
+    Notes
+    -----
+    - The logger level controls the global filtering of messages.
+    - The FileHandler writes log messages to a file.
+    - The StreamHandler displays log messages in the console.
+    """
+    # Get the root logger
+    logger = logging.getLogger()
+    logger.setLevel(logger_level)  # Set the logger's global logging level
+
+    # Create a FileHandler for writing logs to a file
+    file_handler = logging.FileHandler(log_file, mode=log_mode)
+    file_handler.setLevel(file_handler_level)  # Set the level for the file handler
+    file_handler.setFormatter(logging.Formatter(log_format))  # Apply the log format
+
+    # Create a StreamHandler for console output
+    stream_handler = logging.StreamHandler()
+    stream_handler.setLevel(stream_handler_level)  # Set the level for the stream handler
+    stream_handler.setFormatter(logging.Formatter(log_format))  # Apply the same log format
+
+    # Add both handlers to the logger
+    logger.addHandler(file_handler)
+    logger.addHandler(stream_handler)
+
+    # Optional: Print confirmation to the console
+    print(f"Logging is configured. Logs are saved to: {log_file} and displayed in the console.")
+
+
+def setup_gpu(gpu_ids="0"):
     """
     Configures TensorFlow to use specified GPU(s) with memory growth enabled.
 
-    Args:
-        gpu_ids (str): Comma-separated GPU IDs to be made visible (e.g., "0,1").
-        log_level (int): Logging level, default is logging.INFO.
+    Parameters
+    ----------
+    gpu_ids : str
+        Comma-separated GPU IDs to be made visible (e.g., "0,1").
 
-    Returns:
-        None
+    Returns
+    -------
+    None
     """
-    # Configure logging
-    logging.basicConfig(level=log_level, format="%(asctime)s - %(levelname)s - %(message)s")
-
     # Specify which GPU(s) to use
     os.environ["CUDA_VISIBLE_DEVICES"] = gpu_ids
 
