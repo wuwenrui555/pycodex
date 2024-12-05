@@ -2,8 +2,10 @@ import logging
 import os
 import re
 
+import numpy as np
 import pandas as pd
 import tensorflow as tf
+import tifffile
 
 ########################################################################################################################
 # setup
@@ -14,9 +16,9 @@ def setup_logging(
     log_file=os.path.join(os.getcwd(), "output.log"),
     log_format="%(asctime)s - %(levelname)s - %(message)s",
     log_mode="w",
-    logger_level=logging.WARNING,
-    file_handler_level=logging.WARNING,
-    stream_handler_level=logging.INFO,
+    logger_level=logging.INFO,
+    file_handler_level=logging.INFO,
+    stream_handler_level=logging.WARNING,
 ):
     """
     Configures logging to output messages to both a file and the console.
@@ -32,9 +34,9 @@ def setup_logging(
     logger_level : int, optional
         Logging level for the root logger. Default is logging.WARNING.
     file_handler_level : int, optional
-        Logging level for the FileHandler. Default is logging.WARNING.
+        Logging level for the FileHandler. Default is logging.INFO.
     stream_handler_level : int, optional
-        Logging level for the StreamHandler (console output). Default is logging.INFO.
+        Logging level for the StreamHandler (console output). Default is logging.WARNING.
 
     Returns
     -------
@@ -264,3 +266,36 @@ def organize_metadata_keyence(
         dict: Dictionary with region names as keys and metadata DataFrames as values.
     """
     return _organize_metadata(marker_dir, parse_marker_keyence, subfolders, extensions)
+
+
+########################################################################################################################
+# export OME-TIFF
+########################################################################################################################
+
+
+def write_ometiff(path_ometiff, names, images, dtype=np.uint16):
+    """
+    Save a list of images as an OME-TIFF file with channel metadata.
+
+    Parameters
+    ----------
+    path_ometiff : str
+        Path to the output OME-TIFF file.
+    names : list of str
+        List of channel names corresponding to each image.
+    images : list of numpy.ndarray
+        List of 2D arrays representing individual images for each channel. All images must have the same shape.
+    dtype : numpy.dtype, optional
+        Data type to cast the images to before saving. Default is `np.uint16`.
+
+    Returns
+    -------
+    None
+    """
+    images_stack = np.stack(images, axis=0).astype(dtype)
+    tifffile.imwrite(
+        path_ometiff,
+        images_stack,
+        metadata={"axes": "CYX", "Channel": {"Name": names}},
+        ome=True,
+    )
