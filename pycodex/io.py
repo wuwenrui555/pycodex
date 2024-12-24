@@ -7,9 +7,9 @@ import pandas as pd
 import tensorflow as tf
 import tifffile
 
-########################################################################################################################
+################################################################################
 # setup
-########################################################################################################################
+################################################################################
 
 
 def setup_logging(
@@ -55,20 +55,30 @@ def setup_logging(
 
     # Create a FileHandler for writing logs to a file
     file_handler = logging.FileHandler(log_file, mode=log_mode)
-    file_handler.setLevel(file_handler_level)  # Set the level for the file handler
-    file_handler.setFormatter(logging.Formatter(log_format))  # Apply the log format
+    file_handler.setLevel(
+        file_handler_level
+    )  # Set the level for the file handler
+    file_handler.setFormatter(
+        logging.Formatter(log_format)
+    )  # Apply the log format
 
     # Create a StreamHandler for console output
     stream_handler = logging.StreamHandler()
-    stream_handler.setLevel(stream_handler_level)  # Set the level for the stream handler
-    stream_handler.setFormatter(logging.Formatter(log_format))  # Apply the same log format
+    stream_handler.setLevel(
+        stream_handler_level
+    )  # Set the level for the stream handler
+    stream_handler.setFormatter(
+        logging.Formatter(log_format)
+    )  # Apply the same log format
 
     # Add both handlers to the logger
     logger.addHandler(file_handler)
     logger.addHandler(stream_handler)
 
     # Optional: Print confirmation to the console
-    print(f"Logging is configured. Logs are saved to: {log_file} and displayed in the console.")
+    print(
+        f"Logging is configured. Logs are saved to: {log_file} and displayed in the console."
+    )
 
 
 def setup_gpu(gpu_ids="0"):
@@ -95,27 +105,32 @@ def setup_gpu(gpu_ids="0"):
             for gpu in gpus:
                 tf.config.experimental.set_memory_growth(gpu, True)
             logging.info(f"Using GPU(s): {[gpu.name for gpu in gpus]}")
+            print(f"Using GPU(s): {[gpu.name for gpu in gpus]}")
         else:
-            logging.info("No GPU detected, using CPU.")
+            logging.warning("No GPU detected, using CPU.")
     except RuntimeError as e:
         # Handle any runtime errors (e.g., GPUs already initialized)
         logging.error(f"GPU setup failed: {e}")
 
 
-########################################################################################################################
+################################################################################
 # rename marker
-########################################################################################################################
+################################################################################
 
 
 def rename_invalid_marker(marker_name: str) -> str:
     """
     Rename the invalid marker name (containing "/" and ":").
 
-    Args:
-        marker (str): Original marker name.
+    Parameters
+    ----------
+    marker_name: str
+        Original marker name.
 
-    Returns:
-        str: Modified marker name with invalid characters replaced by "_".
+    Returns
+    -------
+    str
+        Renamed marker name with invalid characters replaced by "_".
     """
     marker_name = re.sub(r"[/:]", "_", marker_name)
     return marker_name
@@ -125,46 +140,63 @@ def rename_duplicate_markers(marker_list: list[str]) -> list[str]:
     """
     Renames duplicate markers by appending a numeric suffix to ensure uniqueness.
 
-    Parameters:
-    marker_list (list): A list of strings representing marker names.
+    Parameters
+    ----------
+    marker_list: list)
+        A list of strings representing marker names.
 
-    Returns:
-    list: A list of marker names where duplicates are renamed with a suffix (e.g., '_2', '_3').
+    Returns
+    -------
+    list
+        A list of marker names where duplicates are renamed with a suffix (e.g.,
+        '_2', '_3').
     """
-    seen = {}
+    # Count the occurrences of each marker
+    marker_list_count = pd.Series(marker_list).value_counts()
+    marker_duplicated = marker_list_count.index[marker_list_count > 1]
+    logging.warning(f"Duplicated markers: {marker_duplicated.tolist()}")
+
+    # Rename duplicated markers: add a numeric suffix for duplicates
+    marker_seen = {}
     renamed_list = []
     for marker in marker_list:
-        if marker in seen:
-            seen[marker] += 1
-            renamed_list.append(f"{marker}_{seen[marker]}")
+        if marker in marker_duplicated:
+            idx = marker_seen.get(marker, 1)
+            renamed_list.append(f"{marker}_{idx}")
+            marker_seen[marker] = idx + 1
         else:
-            seen[marker] = 1
             renamed_list.append(marker)
-    print(f"Duplicated markers: {[marker for marker, n in seen.items() if n > 1]}")
 
     return renamed_list
 
 
-########################################################################################################################
+################################################################################
 # organize metadata
-########################################################################################################################
+################################################################################
 
 
 def parse_marker_fusion(marker_path: str) -> pd.DataFrame:
     """
     Fusion: Parse marker information from the file name.
 
-    Args:
-        marker_path (str): Path to the marker image file (*.tif).
+    Parameters
+    ----------
+    marker_path : str
+        Path to the marker image file (*.tif).
 
-    Returns:
-        pd.DataFrame: DataFrame of metadata.
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame of metadata.
     """
     marker_basename = os.path.basename(marker_path)
     pattern = r"(.+)\.tiff?$"
     match = re.match(pattern, marker_basename)
     (marker,) = match.groups()
-    metadata = pd.DataFrame([[marker_path, rename_invalid_marker(marker)]], columns=["path", "marker"])
+    metadata = pd.DataFrame(
+        [[marker_path, rename_invalid_marker(marker)]],
+        columns=["path", "marker"],
+    )
     return metadata
 
 
@@ -172,11 +204,15 @@ def parse_marker_keyence(marker_path: str) -> pd.DataFrame:
     """
     Keyence: Parse marker information from the file name.
 
-    Args:
-        marker_path (str): Path to the marker image file (*.tif).
+    Parameters
+    ----------
+    marker_path : str
+        Path to the marker image file (*.tif).
 
-    Returns:
-        pd.DataFrame: DataFrame of metadata.
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame of metadata.
     """
     marker_basename = os.path.basename(marker_path)
     pattern = r"(reg\d+)_(cyc\d+)_(ch\d+)_(.+)\.tiff?$"
@@ -189,88 +225,229 @@ def parse_marker_keyence(marker_path: str) -> pd.DataFrame:
     return metadata
 
 
-def _organize_metadata(
-    marker_dir: str, parse_marker_func, subfolders: bool = True, extensions: list[str] = [".tiff", ".tif"]
-):
+def parse_region(
+    region_dir: str, parse_marker_func, region: str, extensions: list[str]
+) -> pd.DataFrame:
     """
-    Internal function to organize metadata from marker files.
+    Load and process metadata for a specific region.
 
-    Args:
-        marker_dir (str): Directory containing marker images or subdirectories of marker images.
-        parse_marker_func (function): Function to parse individual marker image files into DataFrames.
-        subfolders (bool): If True, marker files are in subfolders of marker_dir (e.g., one subfolder per region).
-            If False, marker files are directly in marker_dir. Default is True.
-        extensions (list): List of allowed file extensions. Default is [".tiff", ".tif"].
+    Parameters
+    ----------
+    region_dir : str
+        Directory containing marker images for a specific region.
+    parse_marker_func : function
+        Function to parse individual marker image files into DataFrames.
+    region : str
+        Name of the region to extract markers for.
+    extensions : list
+        List of allowed file extensions.
 
-    Returns:
-        dict: Dictionary with region names as keys and metadata DataFrames as values.
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame containing metadata for the specified region.
+    """
+    metadata_dfs = [
+        parse_marker_func(os.path.join(region_dir, marker))
+        for marker in os.listdir(region_dir)
+        if os.path.splitext(marker)[1] in extensions
+    ]
+    metadata_df = pd.concat(metadata_dfs, axis=0).reset_index(drop=True)
+    metadata_df["region"] = region
+    return metadata_df
+
+
+def organize_metadata(
+    marker_dir: str,
+    parse_marker_func,
+    subfolders: bool = True,
+    extensions: list[str] = [".tiff", ".tif"],
+) -> dict[str, pd.DataFrame]:
+    """
+    Organize metadata from marker files.
+
+    Parameters
+    ----------
+    marker_dir : str
+        Directory containing marker images or subdirectories of marker images.
+    parse_marker_func : function
+        Function to parse individual marker image files into DataFrames.
+    subfolders : bool, optional
+        If True, marker files are in subfolders of `marker_dir` (e.g., one
+        subfolder per region). If False, marker files are directly in `marker_dir`.
+        Default is True.
+    extensions : list, optional
+        List of allowed file extensions. Default is [".tiff", ".tif"].
+
+    Returns
+    -------
+    dict
+        Dictionary with region names as keys and metadata DataFrames as values.
     """
     metadata_dict = {}
     if subfolders:
         for region in os.listdir(marker_dir):
             region_dir = os.path.join(marker_dir, region)
-            metadata_dfs = [
-                parse_marker_func(os.path.join(region_dir, marker))
-                for marker in os.listdir(region_dir)
-                if os.path.splitext(marker)[1] in extensions
-            ]
-            metadata_df = pd.concat(metadata_dfs, axis=0).reset_index(drop=True)
-            metadata_df["region"] = region
-            metadata_dict[region] = metadata_df
+            metadata_dict[region] = parse_region(
+                region_dir, parse_marker_func, region, extensions
+            )
     else:
-        region = "region"
-        metadata_dfs = [
-            parse_marker_func(os.path.join(marker_dir, marker))
-            for marker in os.listdir(marker_dir)
-            if os.path.splitext(marker)[1] in extensions
-        ]
-        metadata_df = pd.concat(metadata_dfs, axis=0).reset_index(drop=True)
-        metadata_df["region"] = region
-        metadata_dict[region] = metadata_df
+        metadata_dict["region"] = parse_region(
+            marker_dir, parse_marker_func, "region", extensions
+        )
     return metadata_dict
 
 
 def organize_metadata_fusion(
-    marker_dir: str, subfolders: bool = True, extensions: list[str] = [".tiff", ".tif"]
+    marker_dir: str,
+    subfolders: bool = True,
+    extensions: list[str] = [".tiff", ".tif"],
 ) -> dict[str, pd.DataFrame]:
     """
     Organize metadata from marker files for Fusion output.
-
-    Args:
-        marker_dir (str): Directory containing marker images or subdirectories of marker images.
-        parse_marker_func (function): Function to parse individual marker image files into DataFrames.
-        subfolders (bool): If True, marker files are in subfolders of marker_dir (e.g., one subfolder per region).
-            If False, marker files are directly in marker_dir. Default is True.
-        extensions (list): List of allowed file extensions. Default is [".tiff", ".tif"].
-
-    Returns:
-        dict: Dictionary with region names as keys and metadata DataFrames as values.
     """
-    return _organize_metadata(marker_dir, parse_marker_fusion, subfolders, extensions)
+    return organize_metadata(
+        marker_dir, parse_marker_fusion, subfolders, extensions
+    )
 
 
 def organize_metadata_keyence(
-    marker_dir: str, subfolders: bool = True, extensions: list[str] = [".tiff", ".tif"]
+    marker_dir: str,
+    subfolders: bool = True,
+    extensions: list[str] = [".tiff", ".tif"],
 ) -> dict[str, pd.DataFrame]:
     """
     Organize metadata from marker files for Keyence output.
-
-    Args:
-        marker_dir (str): Directory containing marker images or subdirectories of marker images.
-        parse_marker_func (function): Function to parse individual marker image files into DataFrames.
-        subfolders (bool): If True, marker files are in subfolders of marker_dir (e.g., one subfolder per region).
-            If False, marker files are directly in marker_dir. Default is True.
-        extensions (list): List of allowed file extensions. Default is [".tiff", ".tif"].
-
-    Returns:
-        dict: Dictionary with region names as keys and metadata DataFrames as values.
     """
-    return _organize_metadata(marker_dir, parse_marker_keyence, subfolders, extensions)
+    return organize_metadata(
+        marker_dir, parse_marker_keyence, subfolders, extensions
+    )
 
 
-########################################################################################################################
+################################################################################
+# Summary
+################################################################################
+
+
+def summary_dir(dir: str, indent="    "):
+    """
+    Summarize the contents of the marker directory.
+
+    Parameters
+    ----------
+    dir : str
+        Directory path to summarize.
+    indent : str, optional
+        Indentation string for nested levels. Default is four spaces.
+
+    Returns
+    -------
+    None
+    """
+    items = os.listdir(dir)
+
+    # Folders
+    folders = [item for item in items if os.path.isdir(os.path.join(dir, item))]
+    if folders:
+        print(f"Folders: {folders}")
+
+    # Files with different extensions
+    files = [item for item in items if os.path.isfile(os.path.join(dir, item))]
+    if files:
+        files_dict = {}
+        for file in files:
+            ext = os.path.splitext(file)[1] or "no_ext"
+            files_dict.setdefault(ext, []).append(file)
+        print("Files by extension:")
+        for ext, file_list in files_dict.items():
+            print(f"{indent}- {ext}: {file_list}")
+
+
+def summary_metadata(
+    metadata_dict: dict[str, pd.DataFrame], indent="    "
+) -> tuple[list[str], list[str], list[str], list[str]]:
+    """
+    Summarize marker information across regions.
+
+    Parameters
+    ----------
+    metadata_dict : dict
+        Dictionary containing region names as keys and metadata DataFrames as values.
+    indent : str, optional
+        Indentation string for nested levels. Default is four spaces.
+
+    Returns
+    -------
+    tuple
+        Tuple containing lists of regions, unique markers, blank markers, and missing
+        markers.
+    """
+    # Summary of regions
+    regions = list(metadata_dict.keys())
+
+    # Summary of markers
+    ## Get All unique markers
+    combined_metadata_df = pd.concat(metadata_dict.values(), ignore_index=True)
+    all_markers = combined_metadata_df["marker"].unique()
+
+    ## Identify and filter out blank markers
+    blank_markers = [
+        marker
+        for marker in all_markers
+        if re.match(r"blank", marker, re.IGNORECASE)
+    ]
+    metadata_df = combined_metadata_df.loc[
+        ~combined_metadata_df["marker"].isin(blank_markers)
+    ]
+    count_pivot = metadata_df.pivot_table(
+        index="marker", columns="region", aggfunc="size", fill_value=0
+    )
+
+    ## Identify markers that are missing in some regions
+    missing_markers_n = (count_pivot == 0).sum(axis=1)
+    missing_markers_df = count_pivot.loc[missing_markers_n > 0]
+    missing_markers = list(missing_markers_df.index)
+    missing_long_df = pd.melt(
+        missing_markers_df.reset_index(),
+        id_vars=["marker"],
+        var_name="region",
+        value_name="count",
+    )
+    missing_long_df = missing_long_df[missing_long_df["count"] == 0]
+    missing_markers_dict = (
+        missing_long_df.groupby("region")["marker"].apply(list).to_dict()
+    )
+
+    ## Identify unique markers (not blank, not duplicated, and not missing in any region)
+    unique_markers = [
+        marker
+        for marker in all_markers
+        if marker not in (blank_markers + missing_markers)
+    ]
+    unique_markers = sorted(unique_markers)
+
+    # Display summary information
+    print(
+        f"Summary of Regions:\n"
+        f"{indent}- Total regions: {len(regions)} {regions}"
+    )
+    print(
+        f"Summary of Markers:\n"
+        f"{indent}- Total unique markers: {len(all_markers)}\n"
+        f"{indent}- Unique markers: {len(unique_markers)} {unique_markers}\n"
+        f"{indent}- Blank markers: {len(blank_markers)} {blank_markers}\n"
+        f"{indent}- Missing markers: {len(missing_markers)}"
+    )
+    if missing_markers:
+        for region, markers in missing_markers_dict.items():
+            print(f"{indent*2}- {region}: {markers}")
+
+    return regions, unique_markers, blank_markers, missing_markers
+
+
+################################################################################
 # export OME-TIFF
-########################################################################################################################
+################################################################################
 
 
 def write_ometiff(path_ometiff, names, images, dtype=np.uint16):
@@ -284,7 +461,8 @@ def write_ometiff(path_ometiff, names, images, dtype=np.uint16):
     names : list of str
         List of channel names corresponding to each image.
     images : list of numpy.ndarray
-        List of 2D arrays representing individual images for each channel. All images must have the same shape.
+        List of 2D arrays representing individual images for each channel. All
+        images must have the same shape.
     dtype : numpy.dtype, optional
         Data type to cast the images to before saving. Default is `np.uint16`.
 
