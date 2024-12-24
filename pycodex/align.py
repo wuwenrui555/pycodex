@@ -469,7 +469,7 @@ def display_aligned_markers(dir_id: str):
         display(df_pivoted[df_pivoted["run"] == run])
 
 
-def export_marker_metadata_to_excel(dir_region: str, dir_output: str):
+def export_marker_metadata_keyence(dir_region: str, dir_output: str):
     """
     Exports marker metadata to an Excel file with multiple sheets.
 
@@ -515,6 +515,58 @@ def export_marker_metadata_to_excel(dir_region: str, dir_output: str):
             # add flag columns
             df_marker["is_blank"] = df_marker["marker_name"].str.contains("blank", case=False, na=False)
             df_marker["is_dapi"] = df_marker["marker_name"].str.match(r"Ch\d+Cy\d+", flags=re.IGNORECASE)
+            df_marker["is_marker"] = (~df_marker["is_blank"]) & (~df_marker["is_dapi"])
+            df_marker["is_kept"] = ""
+            # save to Excel with the run name as the sheet name
+            df_marker.to_excel(writer, sheet_name=run, index=False)
+
+
+def export_marker_metadata_fusion(dir_region: str, dir_output: str):
+    """
+    Exports marker metadata to an Excel file with multiple sheets.
+
+    This function processes metadata for a given region directory, organizes the marker information,
+    and writes the data into an Excel file. Each run's metadata is saved as a separate sheet, and a
+    summary sheet for marker order is included.
+
+    Parameters
+    ----------
+    dir_region : str
+        The path to the region directory containing marker metadata for processing.
+    dir_output : str
+        The path to the output directory where the Excel file will be saved.
+
+    Returns
+    -------
+    None
+        The function saves an Excel file with multiple sheets to the specified output directory.
+
+    Notes
+    -----
+    - Each sheet corresponds to a run and contains the following columns:
+        - `marker`: Marker names.
+        - `is_blank`: Boolean flag indicating whether the marker is a blank.
+        - `is_dapi`: Boolean flag indicating whether the marker is a DAPI marker.
+        - `is_marker`: Boolean flag indicating whether the marker is a valid marker (not blank or DAPI).
+        - `is_kept`: An empty column for user-defined marker retention.
+    - The `marker_order` sheet contains column headers for each run for user-defined marker order.
+    """
+    os.makedirs(dir_output, exist_ok=True)
+
+    region_id = os.path.basename(dir_region)
+    path_excel = os.path.join(dir_output, f"{region_id}.xlsx")
+    with pd.ExcelWriter(path_excel) as writer:
+        # sheet for marker metadata of each run
+        marker_metadata = io.organize_metadata_fusion(dir_region, subfolders=True)
+        run_list = sorted(marker_metadata.keys())
+        for run in run_list:
+            df_marker = marker_metadata[run]
+            df_marker = df_marker.drop(columns=["region"])
+            df_marker["marker_name"] = df_marker["marker"]
+            df_marker["marker"] = run + "-" + df_marker["marker"]
+            # add flag columns
+            df_marker["is_blank"] = df_marker["marker_name"].str.contains("blank", case=False, na=False)
+            df_marker["is_dapi"] = df_marker["marker_name"].str.contains("dapi", case=False, na=False)
             df_marker["is_marker"] = (~df_marker["is_blank"]) & (~df_marker["is_dapi"])
             df_marker["is_kept"] = ""
             # save to Excel with the run name as the sheet name
