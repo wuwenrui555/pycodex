@@ -6,15 +6,15 @@ import numpy as np
 
 from pycodex.markerim import scale_marker_sum
 
-########################################################################################################################
+################################################################################
 # segmentation test
-########################################################################################################################
+################################################################################
 
 
 def plot_cropped_subregion(
     im: np.ndarray,
-    x_mid: int,
-    y_mid: int,
+    x_min: int,
+    y_min: int,
     length: int,
     figsize: tuple[int, int] = (10, 10),
     cmap: Optional[str] = None,
@@ -22,29 +22,27 @@ def plot_cropped_subregion(
     """
     Plots an image with a highlighted subregion and the cropped subregion side-by-side.
 
-    Args:
-        im (np.ndarray):
-            The input image as a NumPy array.
-        x_mid (int):
-            The x-coordinate of the center of the subregion to be cropped.
-        y_mid (int):
-            The y-coordinate of the center of the subregion to be cropped.
-        length (int):
-            The length of the square subregion to be cropped.
-        figsize (tuple[int, int], optional):
-            The size of the figure to be displayed in inches. Default is (10, 10).
-        cmap (Optional[str], optional):
-            The colormap for displaying the image. If None, the default colormap is used.
-            Default is None.
+    Parameters
+    ----------
+    im : np.ndarray
+        The input image as a NumPy array.
+    x_min : int
+        The x-coordinate of the top-left corner of the subregion to be cropped.
+    y_min : int
+        The y-coordinate of the top-left corner of the subregion to be cropped.
+    length : int
+        The length of the square subregion to be cropped.
+    figsize : tuple[int, int], optional
+        The size of the figure to be displayed in inches. Default is (10, 10).
+    cmap : Optional[str], optional
+        The colormap for displaying the image. If None, the default colormap is
+        used. Default is None.
 
     Returns:
         None: Displays the plot with the original image and the cropped subregion.
     """
-    # Extract the subregion of the image centered at (x_mid, y_mid) with the specified length
-    im_sm = im[
-        int(y_mid - length / 2) : int(y_mid + length / 2),
-        int(x_mid - length / 2) : int(x_mid + length / 2),
-    ]
+    # Extract the subregion of the image
+    im_sm = im[y_min : y_min + length, x_min : x_min + length]
 
     fig = plt.figure(figsize=figsize)
 
@@ -52,7 +50,7 @@ def plot_cropped_subregion(
     ax = fig.add_subplot(1, 2, 1)
     ax.imshow(im, cmap=cmap)
     rect = patches.Rectangle(
-        (x_mid - length / 2, y_mid - length / 2),
+        (x_min, y_min),
         length,
         length,
         linewidth=1,
@@ -116,7 +114,10 @@ def plot_scale_marker_sum(
     Returns:
         None: This function only displays the plot and does not return any value.
     """
-    im_list = [scale_marker_sum(marker_list, marker_dict, scale=scale) for marker_list in marker_lists]
+    im_list = [
+        scale_marker_sum(marker_list, marker_dict, scale=scale)
+        for marker_list in marker_lists
+    ]
     nrow = int(np.ceil(len(im_list) / ncol))
     fig, axs = plt.subplots(
         nrows=nrow,
@@ -175,11 +176,16 @@ def plot_scale_marker_sum_segmentation(
 
     """
 
-    im_list = [scale_marker_sum(marker_list, marker_dict, scale=scale) for marker_list in marker_lists]
+    im_list = [
+        scale_marker_sum(marker_list, marker_dict, scale=scale)
+        for marker_list in marker_lists
+    ]
     ncol = len(im_list)
 
     def _im_in_out_segmentation(
-        marker_im: np.ndarray, segmentation_mask: np.ndarray, overlay: np.ndarray
+        marker_im: np.ndarray,
+        segmentation_mask: np.ndarray,
+        overlay: np.ndarray,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Generates images inside and outside the segmentation mask and an overlay with contours.
@@ -203,13 +209,19 @@ def plot_scale_marker_sum_segmentation(
         marker_im_out = marker_im.copy()
         marker_im_out[segmentation_mask != 0] = 0
 
-        argb_overlay = np.zeros((overlay.shape[0], overlay.shape[1], 4), dtype=np.uint8)
+        argb_overlay = np.zeros(
+            (overlay.shape[0], overlay.shape[1], 4), dtype=np.uint8
+        )
         argb_overlay[:, :, 0:3] = 255  # All white in RGB channels
-        argb_overlay[:, :, 3] = np.where(overlay[:, :, 0] == 1, 255, 0)  # Set alpha channel
+        argb_overlay[:, :, 3] = np.where(
+            overlay[:, :, 0] == 1, 255, 0
+        )  # Set alpha channel
         return marker_im_in, marker_im_out, argb_overlay
 
     nrow = 4
-    fig, axs = plt.subplots(ncols=ncol, nrows=nrow, figsize=(ncol * figsize[0], nrow * figsize[1]))
+    fig, axs = plt.subplots(
+        ncols=ncol, nrows=nrow, figsize=(ncol * figsize[0], nrow * figsize[1])
+    )
     # Add Y-axis labels for each row
     y_labels = [
         "Raw",
@@ -221,7 +233,9 @@ def plot_scale_marker_sum_segmentation(
         axs[row, 0].set_ylabel(label, rotation=90, fontsize=12, ha="center")
 
     for i, marker_im in enumerate(im_list):
-        marker_im_in, marker_im_out, argb_overlay = _im_in_out_segmentation(marker_im, segmentation_mask, overlay)
+        marker_im_in, marker_im_out, argb_overlay = _im_in_out_segmentation(
+            marker_im, segmentation_mask, overlay
+        )
         axs[0, i].imshow(marker_im, vmax=vmax)
         axs[0, i].set_title(title_list[i])
         axs[0, i].set_xticks([])

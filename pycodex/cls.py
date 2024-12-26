@@ -4,6 +4,8 @@ from pycodex.io import (
     organize_metadata_keyence,
     summary_metadata,
 )
+import pandas as pd
+import tifffile
 
 
 class Marker:
@@ -49,3 +51,20 @@ class Marker:
             self.blank_markers,
             self.missing_markers,
         ) = summary_metadata(self.metadata, indent="    ")
+
+    def organize_marker_dict(
+        self, region: str, marker_list: list[str]
+    ) -> dict[str, pd.DataFrame]:
+        """
+        Organize marker dictionary for a specific region.
+        """
+        df_metadata = self.metadata[region]
+        df_metadata = df_metadata[
+            df_metadata["marker"].isin(marker_list)
+        ].reset_index(drop=True)
+
+        marker_dict = {
+            row["marker"]: tifffile.imread(row["path"])
+            for _, row in df_metadata.iterrows()
+        }
+        return marker_dict
