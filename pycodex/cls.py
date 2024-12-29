@@ -8,7 +8,7 @@ import pandas as pd
 import tifffile
 
 
-class Marker:
+class MarkerMetadata:
     def __init__(self, marker_dir):
         self.marker_dir = marker_dir
 
@@ -26,6 +26,16 @@ class Marker:
     ):
         """
         Organize metadata from marker files.
+
+        Parameters
+        ----------
+        platform : str
+            Platform used to acquire marker images.
+            Options are "keyence" or "fusion".
+        subfolders : bool, optional
+            Search for markers in subfolders, by default True.
+        extensions : list[str], optional
+            File extensions to search for. Default is [".tiff", ".tif"].
         """
         # Define function to parse marker information
         if platform == "fusion":
@@ -57,6 +67,13 @@ class Marker:
     ) -> dict[str, pd.DataFrame]:
         """
         Organize marker dictionary for a specific region.
+
+        Parameters
+        ----------
+        region : str
+            Region to organize.
+        marker_list : list[str]
+            List of markers to organize.
         """
         df_metadata = self.metadata[region]
         df_metadata = df_metadata[
