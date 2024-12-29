@@ -1,16 +1,38 @@
-from pycodex.io import (
-    summary_dir,
-    organize_metadata_fusion,
-    organize_metadata_keyence,
-    summary_metadata,
-)
 import pandas as pd
 import tifffile
+from IPython.display import display
+
+from pycodex.io import (
+    organize_metadata_fusion,
+    organize_metadata_keyence,
+    summary_dir,
+    summary_metadata,
+)
 
 
 class MarkerMetadata:
     def __init__(self, marker_dir):
         self.marker_dir = marker_dir
+
+    @staticmethod
+    def display_items(items: list[str], ncol: int = 10):
+        """
+        Display a list in tabular format.
+
+        Args:
+            marker_list (dict): Dictionary or list of markers to display in tabular form.
+            ncol (int): Number of columns to display in the output table.
+
+        Returns:
+            None: This function displays the DataFrame of markers.
+        """
+        ncol = min(ncol, len(items))
+        markers_df = pd.DataFrame(
+            [items[i : i + ncol] for i in range(0, len(items), ncol)],
+            columns=[i + 1 for i in range(ncol)],
+        ).fillna("")
+
+        display(markers_df)
 
     def summary_dir(self):
         """
