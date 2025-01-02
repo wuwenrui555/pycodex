@@ -1,22 +1,48 @@
+import json
 import logging
 import time
-import numpy as np
-import pandas as pd
 from pathlib import Path
 
-import json
+import numpy as np
+import pandas as pd
 import skimage.measure
-from pycodex.io import setup_logging
-from pyqupath.ometiff import load_ometiff
-from pyqupath.annotation import mask_to_geojson
 import tifffile
 from deepcell.applications import Mesmer
 from deepcell.utils.plot_utils import create_rgb_image, make_outline_overlay
+from pyqupath.geojson import mask_to_geojson
+from pyqupath.ometiff import load_tiff_to_dict
 
+from pycodex.io import setup_logging
 
 ###############################################################################
 # segmentation
 ###############################################################################
+
+
+def cut_quantile(x: np.ndarray, q_min: float = 0.01, q_max: float = 0.99):
+    """
+    Cut values in an array at the specified quantiles.
+    Values below q_min are set to 0, and values above q_max are set to q_max.
+
+    Parameters
+    ----------
+    x : np.ndarray
+        Values to be cut.
+    q_min : float, optional, default=0.01
+        Lower quantile to cut at.
+    q_max : float, optional, default=0.99
+        Upper quantile to cut at.
+
+    Returns
+    -------
+    np.ndarray
+        Array with values modified based on the specified quantiles.
+    """
+    min_val = np.quantile(x, q_min)
+    max_val = np.quantile(x, q_max)
+    x = np.where(x < min_val, 0, x)  # Set values below q_min to 0
+    x = np.where(x > max_val, max_val, x)  # Set values above q_max to q_max
+    return x
 
 
 def scale_to_0_1(
@@ -92,6 +118,8 @@ def segment_mesmer(
     boundary_markers: list[str],
     internal_markers: list[str],
     pixel_size_um: float,
+    q_min: float = 0,
+    q_max: float = 1,
     scale: bool = True,
     maxima_threshold: float = 0.075,
     interior_threshold: float = 0.20,
@@ -111,6 +139,10 @@ def segment_mesmer(
         Pixel size in micrometers. Note:
         - Fusion: 0.5068164319979996
         - Keyence: 0.3775202
+    q_min : float, optional
+        Lower quantile to cut at. Defaults to 0.
+    q_max : float, optional
+        Upper quantile to cut at. Defaults to 1.
     scale : bool, optional
         Whether to scale the images or not. Defaults to True.
     maxima_threshold : float, optional
@@ -123,6 +155,13 @@ def segment_mesmer(
     Tuple
         Segmentation mask, RGB image, and overlay.
     """
+    # Cut quantile
+    if q_min != 0 or q_max != 1:
+        marker_dict = {
+            key: cut_quantile(value, q_min=q_min, q_max=q_max)
+            for key, value in marker_dict.items()
+        }
+
     # Data for markers
     boundary_sum = scale_marker_sum(boundary_markers, marker_dict, scale=scale)
     internal_sum = scale_marker_sum(internal_markers, marker_dict, scale=scale)
@@ -205,12 +244,44 @@ def run_segmentation_mesmer(
     boundary_markers: list[str],
     internal_markers: list[str],
     pixel_size_um: float,
+    q_min: float = 0,
+    q_max: float = 1,
     scale: bool = True,
     maxima_threshold: float = 0.075,
     interior_threshold: float = 0.20,
     tag: str = None,
     ometiff_path: str = None,
 ):
+    """
+    Run segmentation using Mesmer.
+
+    Parameters
+    ----------
+    output_dir : str
+        Output directory to save the results.
+    boundary_markers : list
+        List of boundary marker names.
+    internal_markers : list
+        List of internal marker names.
+    pixel_size_um : float
+        Pixel size in micrometers.
+    q_min : float, optional
+        Lower quantile to cut at. Defaults to 0.
+    q_max : float, optional
+        Upper quantile to cut at. Defaults to 1.
+    scale : bool, optional
+        Whether to scale the images or not. Defaults to True.
+    maxima_threshold : float, optional
+        Maxima threshold, larger for fewer cells. Defaults to 0.075.
+    interior_threshold : float, optional
+        Interior threshold, larger for larger cells. Defaults to 0.20.
+    tag : str, optional
+        Tag to append to the output directory. Defaults to None, using time as
+        tag (YYYYMMDD_HHMMSS).
+    ometiff_path : str, optional
+        Path to the OME-TIFF file. Defaults to None, using the only one OME-TIFF
+        file under `output_dir`.
+    """
     # Set up logging
     dir_root = Path(output_dir)
     if tag is None:
@@ -230,7 +301,7 @@ def run_segmentation_mesmer(
             raise ValueError("Multiple OME-TIFF files found in the directory.")
         else:
             ometiff_path = ometiff_paths[0]
-            marker_dict = load_ometiff(ometiff_path)
+            marker_dict = load_tiff_to_dict(ometiff_path, filetype="ome.tiff")
             logging.info(f"OME-TIFF file loaded: {ometiff_path}.")
 
     # Check whether selected markers are present in the OME-TIFF file
@@ -249,6 +320,8 @@ def run_segmentation_mesmer(
         "boundary_markers": boundary_markers,
         "internal_markers": internal_markers,
         "pixel_size_um": pixel_size_um,
+        "q_min": q_min,
+        "q_max": q_max,
         "scale": scale,
         "maxima_threshold": maxima_threshold,
         "interior_threshold": interior_threshold,
@@ -266,6 +339,8 @@ def run_segmentation_mesmer(
             internal_markers=internal_markers,
             marker_dict=marker_dict,
             pixel_size_um=pixel_size_um,
+            q_min=q_min,
+            q_max=q_max,
             scale=scale,
             maxima_threshold=maxima_threshold,
             interior_threshold=interior_threshold,
