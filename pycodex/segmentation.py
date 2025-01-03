@@ -9,7 +9,7 @@ import skimage.measure
 import tifffile
 from deepcell.applications import Mesmer
 from deepcell.utils.plot_utils import create_rgb_image, make_outline_overlay
-from pyqupath.geojson import mask_to_geojson
+from pyqupath.geojson import mask_to_geojson_joblib
 from pyqupath.ometiff import load_tiff_to_dict
 
 from pycodex.io import setup_logging
@@ -264,7 +264,9 @@ def run_segmentation_mesmer(
     internal_markers : list
         List of internal marker names.
     pixel_size_um : float
-        Pixel size in micrometers.
+        Pixel size in micrometers. Note:
+        - Fusion: 0.5068164319979996
+        - Keyence: 0.3775202
     q_min : float, optional
         Lower quantile to cut at. Defaults to 0.
     q_max : float, optional
@@ -360,7 +362,7 @@ def run_segmentation_mesmer(
         logging.info("Single-cell features extracted.")
 
         # Save segmentation mask as GeoJSON
-        mask_to_geojson(
+        mask_to_geojson_joblib(
             segmentation_mask, dir_output / "segmentation_mask.geojson"
         )
         logging.info("Segmentation GeoJSON generated.")
