@@ -198,7 +198,7 @@ def extract_cell_features(
     segmentation_mask: np.ndarray,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Extract single cell features from segmeantaion mask.
+    Extract single cell features from segmentation mask.
 
     Args:
         marker_dict (dict): Dictionary containing marker names as keys and corresponding images as values.
@@ -220,7 +220,7 @@ def extract_cell_features(
     props_df = pd.DataFrame(props)
     props_df.columns = ["cellLabel", "cellSize", "Y_cent", "X_cent"]
 
-    # exctract marker intensity
+    # extract marker intensity
     stats = skimage.measure.regionprops(segmentation_mask)
     n_cell = len(stats)
     n_marker = len(marker_name)

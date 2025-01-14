@@ -55,12 +55,8 @@ def setup_logging(
 
     # Create a FileHandler for writing logs to a file
     file_handler = logging.FileHandler(log_file, mode=log_mode)
-    file_handler.setLevel(
-        file_handler_level
-    )  # Set the level for the file handler
-    file_handler.setFormatter(
-        logging.Formatter(log_format)
-    )  # Apply the log format
+    file_handler.setLevel(file_handler_level)  # Set the level for the file handler
+    file_handler.setFormatter(logging.Formatter(log_format))  # Apply the log format
 
     # Create a StreamHandler for console output
     stream_handler = logging.StreamHandler()
@@ -215,7 +211,7 @@ def parse_marker_keyence(marker_path: str) -> pd.DataFrame:
         DataFrame of metadata.
     """
     marker_basename = os.path.basename(marker_path)
-    pattern = r"(reg\d+)_(cyc\d+)_(ch\d+)_(.+)\.tiff?$"
+    pattern = r".*(reg\d+)_(cyc\d+)_(ch\d+)_([^.]+)(?:\.ome)?\.tiff?$"
     match = re.match(pattern, marker_basename)
     region, cycle, channel, marker = match.groups()
     metadata = pd.DataFrame(
@@ -250,7 +246,7 @@ def parse_region(
     metadata_dfs = [
         parse_marker_func(os.path.join(region_dir, marker))
         for marker in os.listdir(region_dir)
-        if os.path.splitext(marker)[1] in extensions
+        if re.search("([^.]+)(.*)", marker).groups()[1] in extensions
     ]
     metadata_df = pd.concat(metadata_dfs, axis=0).reset_index(drop=True)
     metadata_df["region"] = region
@@ -306,9 +302,7 @@ def organize_metadata_fusion(
     """
     Organize metadata from marker files for Fusion output.
     """
-    return organize_metadata(
-        marker_dir, parse_marker_fusion, subfolders, extensions
-    )
+    return organize_metadata(marker_dir, parse_marker_fusion, subfolders, extensions)
 
 
 def organize_metadata_keyence(
@@ -319,9 +313,7 @@ def organize_metadata_keyence(
     """
     Organize metadata from marker files for Keyence output.
     """
-    return organize_metadata(
-        marker_dir, parse_marker_keyence, subfolders, extensions
-    )
+    return organize_metadata(marker_dir, parse_marker_keyence, subfolders, extensions)
 
 
 ################################################################################
@@ -392,9 +384,7 @@ def summary_metadata(
 
     ## Identify and filter out blank markers
     blank_markers = [
-        marker
-        for marker in all_markers
-        if re.match(r"blank", marker, re.IGNORECASE)
+        marker for marker in all_markers if re.match(r"blank", marker, re.IGNORECASE)
     ]
     metadata_df = combined_metadata_df.loc[
         ~combined_metadata_df["marker"].isin(blank_markers)
@@ -415,7 +405,9 @@ def summary_metadata(
     )
     missing_long_df = missing_long_df[missing_long_df["count"] == 0]
     missing_markers_dict = (
-        missing_long_df.groupby("region")["marker"].apply(list).to_dict()
+        missing_long_df.groupby("region", group_keys=False)["marker"]
+        .apply(list)
+        .to_dict()
     )
 
     ## Identify unique markers (not blank, not duplicated, and not missing in any region)
@@ -427,10 +419,7 @@ def summary_metadata(
     unique_markers = sorted(unique_markers)
 
     # Display summary information
-    print(
-        f"Summary of Regions:\n"
-        f"{indent}- Total regions: {len(regions)} {regions}"
-    )
+    print(f"Summary of Regions:\n{indent}- Total regions: {len(regions)} {regions}")
     print(
         f"Summary of Markers:\n"
         f"{indent}- Total unique markers: {len(all_markers)}\n"
@@ -440,7 +429,7 @@ def summary_metadata(
     )
     if missing_markers:
         for region, markers in missing_markers_dict.items():
-            print(f"{indent*2}- {region}: {markers}")
+            print(f"{indent * 2}- {region}: {markers}")
 
     return regions, unique_markers, blank_markers, missing_markers
 

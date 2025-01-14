@@ -10,7 +10,7 @@ setup(
     author_email="wuwenruiwwr@outlook.com",
     url="https://github.com/SizunJiangLab/pycodex",
     packages=find_packages(),
-    install_requires=[],
+    install_requires=["deepcell", "rasterio"],
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",

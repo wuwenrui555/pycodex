@@ -44,7 +44,7 @@ class MarkerMetadata:
         self,
         platform: str,  # "keyence", "fusion"
         subfolders: bool = True,
-        extensions: list[str] = [".tiff", ".tif"],
+        extensions: list[str] = [".tiff", ".tif", ".ome.tiff"],
     ):
         """
         Organize metadata from marker files.
