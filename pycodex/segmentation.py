@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import time
 from pathlib import Path
 
@@ -10,7 +11,7 @@ import tifffile
 from deepcell.applications import Mesmer
 from deepcell.utils.plot_utils import create_rgb_image, make_outline_overlay
 from pyqupath.geojson import mask_to_geojson_joblib
-from pyqupath.ometiff import load_tiff_to_dict
+from pyqupath.ometiff import export_ometiff_pyramid_from_dict, load_tiff_to_dict
 
 from pycodex.io import setup_logging
 
@@ -153,7 +154,8 @@ def segment_mesmer(
     Returns
     -------
     Tuple
-        Segmentation mask, RGB image, and overlay.
+        Segmentation mask, RGB image, overlay, stacked signals of boundary markers
+        and stacked signals of internal markers used for segmentation.
     """
     # Cut quantile
     if q_min != 0 or q_max != 1:
@@ -188,7 +190,7 @@ def segment_mesmer(
     segmentation_mask = segmentation_mask[0, ..., 0]
     rgb_image = rgb_image[0, ...]
     overlay = overlay[0, ...]
-    return segmentation_mask, rgb_image, overlay
+    return segmentation_mask, rgb_image, overlay, boundary_sum, internal_sum
 
 
 def extract_cell_features(
@@ -336,7 +338,7 @@ def run_segmentation_mesmer(
     # Perform segmentation
     try:
         # Segmentation
-        segmentation_mask, _, _ = segment_mesmer(
+        segmentation_mask, _, _, boundary_sum, internal_sum = segment_mesmer(
             boundary_markers=boundary_markers,
             internal_markers=internal_markers,
             marker_dict=marker_dict,
@@ -352,6 +354,24 @@ def run_segmentation_mesmer(
             path_segmentation_mask, segmentation_mask.astype(np.uint32)
         )
         logging.info("Segmentation completed.")
+
+        # Save stacked signals of boundary and internal markers used for segmentation
+        if not scale:
+            boundary_sum = scale_to_0_1(boundary_sum)
+            internal_sum = scale_to_0_1(internal_sum)
+        boundary_sum = (boundary_sum * 65535).astype(np.uint16)
+        internal_sum = (internal_sum * 65535).astype(np.uint16)
+        marker_seg_dict = {
+            marker: marker_dict[marker]
+            for marker in boundary_markers + internal_markers
+        }
+        marker_seg_dict["boundary_sum"] = boundary_sum
+        marker_seg_dict["internal_sum"] = internal_sum
+        path_marker_seg = dir_output / "segmentation_markers.ome.tiff"
+        if path_marker_seg.exists():
+            os.remove(path_marker_seg)
+        export_ometiff_pyramid_from_dict(marker_seg_dict, path_marker_seg)
+        logging.info("Markers used for segmentation saved as OME-TIFF.")
 
         # Extract single-cell features
         data, data_scale_size = extract_cell_features(

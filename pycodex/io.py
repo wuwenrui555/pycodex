@@ -77,7 +77,7 @@ def setup_logging(
 
     # Optional: Print confirmation to the console
     print(
-        f"Logging is configured. Logs are saved to: {log_file} and displayed in the console."
+        f"\nLogging is configured. Logs are saved to: {log_file} and displayed in the console."
     )
 
 
