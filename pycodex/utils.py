@@ -106,6 +106,7 @@ def segmentation_mesmer(
     scale: bool = True,
     maxima_threshold: float = 0.075,
     interior_threshold: float = 0.20,
+    compartment="whole-cell",
 ) -> None:
     """
     Perform segmentation (Mesmer) on each image in the marker object.
@@ -131,6 +132,9 @@ def segmentation_mesmer(
         Maxima threshold, larger for fewer cells. Defaults to 0.075.
     interior_threshold : float, optional
         Interior threshold, larger for larger cells. Defaults to 0.20.
+    compartment : str, optional
+        Specify type of segmentation to predict. Must be one of "whole-cell",
+        "nuclear", "both". Defaults to "whole-cell".
 
     Returns
     -------
@@ -147,6 +151,7 @@ def segmentation_mesmer(
         "scale": scale,
         "maxima_threshold": maxima_threshold,
         "interior_threshold": interior_threshold,
+        "compartment": compartment,
     }
     with open(
         f"{output_dir}/parameter_segmentation.json", "w", encoding="utf-8"
@@ -171,6 +176,7 @@ def segmentation_mesmer(
                     scale=scale,
                     maxima_threshold=maxima_threshold,
                     interior_threshold=interior_threshold,
+                    compartment=compartment,
                 )
             )
 

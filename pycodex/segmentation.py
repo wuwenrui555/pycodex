@@ -124,6 +124,7 @@ def segment_mesmer(
     scale: bool = True,
     maxima_threshold: float = 0.075,
     interior_threshold: float = 0.20,
+    compartment="whole-cell",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Perform segmentation (Mesmer) on a given image.
@@ -150,6 +151,9 @@ def segment_mesmer(
         Maxima threshold, larger for fewer cells. Defaults to 0.075.
     interior_threshold : float, optional
         Interior threshold, larger for larger cells. Defaults to 0.20.
+    compartment : str, optional
+        Specify type of segmentation to predict. Must be one of "whole-cell",
+        "nuclear", "both". Defaults to "whole-cell".
 
     Returns
     -------
@@ -181,7 +185,7 @@ def segment_mesmer(
             "maxima_threshold": maxima_threshold,
             "interior_threshold": interior_threshold,
         },
-        compartment="nuclear",
+        compartment=compartment,
     )
     rgb_image = create_rgb_image(seg_stack, channel_colors=["blue", "green"])
     overlay = make_outline_overlay(
@@ -251,6 +255,7 @@ def run_segmentation_mesmer(
     scale: bool = True,
     maxima_threshold: float = 0.075,
     interior_threshold: float = 0.20,
+    compartment="whole-cell",
     tag: str = None,
     ometiff_path: str = None,
 ):
@@ -279,6 +284,9 @@ def run_segmentation_mesmer(
         Maxima threshold, larger for fewer cells. Defaults to 0.075.
     interior_threshold : float, optional
         Interior threshold, larger for larger cells. Defaults to 0.20.
+    compartment : str, optional
+        Specify type of segmentation to predict. Must be one of "whole-cell",
+        "nuclear", "both". Defaults to "whole-cell".
     tag : str, optional
         Tag to append to the output directory. Defaults to None, using time as
         tag (YYYYMMDD_HHMMSS).
@@ -329,6 +337,7 @@ def run_segmentation_mesmer(
         "scale": scale,
         "maxima_threshold": maxima_threshold,
         "interior_threshold": interior_threshold,
+        "compartment": compartment,
     }
     with open(
         f"{dir_output}/parameter_segmentation.json", "w", encoding="utf-8"
@@ -348,6 +357,7 @@ def run_segmentation_mesmer(
             scale=scale,
             maxima_threshold=maxima_threshold,
             interior_threshold=interior_threshold,
+            compartment=compartment,
         )
         path_segmentation_mask = dir_output / "segmentation_mask.tiff"
         tifffile.imwrite(

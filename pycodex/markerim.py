@@ -44,7 +44,11 @@ def subset_subregion(
 ########################################################################################################################
 
 
-def scale_marker_sum(marker_list: list[str], marker_dict: dict[str : np.ndarray], scale: bool = True) -> np.ndarray:
+def scale_marker_sum(
+    marker_list: list[str],
+    marker_dict: dict[str : np.ndarray],
+    scale: bool = True,
+) -> np.ndarray:
     """
     Sum scaled images of specified markers.
 
@@ -57,7 +61,8 @@ def scale_marker_sum(marker_list: list[str], marker_dict: dict[str : np.ndarray]
         np.ndarray: Summed and scaled image of the specified markers.
     """
     scaled_marker_list = [
-        (marker_dict[marker] - marker_dict[marker].min()) / (marker_dict[marker].max() - marker_dict[marker].min())
+        (marker_dict[marker] - marker_dict[marker].min())
+        / (marker_dict[marker].max() - marker_dict[marker].min())
         if scale
         else marker_dict[marker]
         for marker in marker_list
@@ -80,6 +85,7 @@ def segmentation_mesmer(
     scale: bool = True,
     maxima_threshold: float = 0.075,
     interior_threshold: float = 0.20,
+    compartment="whole-cell",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Perform segmentation (Mesmer) on a given image.
@@ -92,6 +98,7 @@ def segmentation_mesmer(
         scale (bool, optional): Whether to scale the images or not. Defaults to True.
         maxima_threshold (float, optional): Maxima threshold, larger for fewer cells. Defaults to 0.075.
         interior_threshold (float, optional): Interior threshold, larger for larger cells. Defaults to 0.20.
+        compartment (str, optional): Specify type of segmentation to predict. Must be one of "whole-cell", "nuclear", "both". Defaults to "whole-cell".
 
     Returns:
         Tuple: Segmentation mask, RGB image, and overlay.
@@ -113,10 +120,12 @@ def segmentation_mesmer(
             "maxima_threshold": maxima_threshold,
             "interior_threshold": interior_threshold,
         },
-        compartment="nuclear",
+        compartment=compartment,
     )
     rgb_image = create_rgb_image(seg_stack, channel_colors=["blue", "green"])
-    overlay = make_outline_overlay(rgb_data=rgb_image, predictions=segmentation_mask)
+    overlay = make_outline_overlay(
+        rgb_data=rgb_image, predictions=segmentation_mask
+    )
     segmentation_mask = segmentation_mask[0, ..., 0]
     rgb_image = rgb_image[0, ...]
     overlay = overlay[0, ...]
@@ -137,7 +146,9 @@ def extract_cell_features(
         Tuple: DataFrames containing single cell data and size-scaled data.
     """
     marker_name = [marker for marker in marker_dict.keys()]
-    marker_array = np.stack([marker_dict[marker] for marker in marker_name], axis=2)
+    marker_array = np.stack(
+        [marker_dict[marker] for marker in marker_name], axis=2
+    )
 
     # extract properties
     props = skimage.measure.regionprops_table(
@@ -147,7 +158,7 @@ def extract_cell_features(
     props_df = pd.DataFrame(props)
     props_df.columns = ["cellLabel", "cellSize", "Y_cent", "X_cent"]
 
-    # exctract marker intensity
+    # extract marker intensity
     stats = skimage.measure.regionprops(segmentation_mask)
     n_cell = len(stats)
     n_marker = len(marker_name)
@@ -155,7 +166,9 @@ def extract_cell_features(
     avgs = np.zeros((n_cell, n_marker))
     for i, region in enumerate(stats):
         # Extract the pixel values for the current region from the marker_array
-        label_counts = [marker_array[coord[0], coord[1], :] for coord in region.coords]
+        label_counts = [
+            marker_array[coord[0], coord[1], :] for coord in region.coords
+        ]
         sums[i] = np.sum(label_counts, axis=0)  # Sum of marker intensities
         avgs[i] = sums[i] / region.area  # Average intensity per unit area
 
