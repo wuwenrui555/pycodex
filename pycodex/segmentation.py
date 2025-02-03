@@ -258,6 +258,7 @@ def run_segmentation_mesmer(
     compartment="whole-cell",
     tag: str = None,
     ometiff_path: str = None,
+    mask_to_geojson: bool = False,
 ):
     """
     Run segmentation using Mesmer.
@@ -291,8 +292,11 @@ def run_segmentation_mesmer(
         Tag to append to the output directory. Defaults to None, using time as
         tag (YYYYMMDD_HHMMSS).
     ometiff_path : str, optional
-        Path to the OME-TIFF file. Defaults to None, using the only one OME-TIFF
-        file under `output_dir`.
+        Path to the input OME-TIFF file. Defaults to None, using the only one
+        OME-TIFF file under `output_dir`.
+    mask_to_geojson : bool, optional
+        Whether to generate a GeoJSON file for segmentation mask. Defaults to
+        False.
     """
     # Set up logging
     dir_root = Path(output_dir)
@@ -369,8 +373,9 @@ def run_segmentation_mesmer(
         if not scale:
             boundary_sum = scale_to_0_1(boundary_sum)
             internal_sum = scale_to_0_1(internal_sum)
-        boundary_sum = (boundary_sum * 65535).astype(np.uint16)
-        internal_sum = (internal_sum * 65535).astype(np.uint16)
+        dtype = marker_dict[internal_markers[0]].dtype
+        boundary_sum = (boundary_sum * np.iinfo(dtype).max).astype(dtype)
+        internal_sum = (internal_sum * np.iinfo(dtype).max).astype(dtype)
         marker_seg_dict = {
             marker: marker_dict[marker]
             for marker in boundary_markers + internal_markers
@@ -391,11 +396,12 @@ def run_segmentation_mesmer(
         data_scale_size.to_csv(dir_output / "dataScaleSize.csv")
         logging.info("Single-cell features extracted.")
 
-        # Save segmentation mask as GeoJSON
-        mask_to_geojson_joblib(
-            segmentation_mask, dir_output / "segmentation_mask.geojson"
-        )
-        logging.info("Segmentation GeoJSON generated.")
+        # Generate GeoJSON file for segmentation mask
+        if mask_to_geojson:
+            mask_to_geojson_joblib(
+                segmentation_mask, dir_output / "segmentation_mask.geojson"
+            )
+            logging.info("Segmentation GeoJSON generated.")
 
     except Exception as e:
         logging.error(f"Segmentation failed: {e}")
