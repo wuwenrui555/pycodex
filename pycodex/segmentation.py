@@ -1,15 +1,16 @@
+# %%
 import json
 import logging
 import os
 import time
 from pathlib import Path
 
+import cv2 as cv
 import numpy as np
 import pandas as pd
 import skimage.measure
 import tifffile
 from deepcell.applications import Mesmer
-from deepcell.utils.plot_utils import create_rgb_image, make_outline_overlay
 from pyqupath.geojson import mask_to_geojson_joblib
 from pyqupath.ometiff import export_ometiff_pyramid_from_dict, load_tiff_to_dict
 
@@ -18,32 +19,6 @@ from pycodex.io import setup_logging
 ###############################################################################
 # segmentation
 ###############################################################################
-
-
-def cut_quantile(x: np.ndarray, q_min: float = 0.01, q_max: float = 0.99):
-    """
-    Cut values in an array at the specified quantiles.
-    Values below q_min are set to 0, and values above q_max are set to q_max.
-
-    Parameters
-    ----------
-    x : np.ndarray
-        Values to be cut.
-    q_min : float, optional, default=0.01
-        Lower quantile to cut at.
-    q_max : float, optional, default=0.99
-        Upper quantile to cut at.
-
-    Returns
-    -------
-    np.ndarray
-        Array with values modified based on the specified quantiles.
-    """
-    min_val = np.quantile(x, q_min)
-    max_val = np.quantile(x, q_max)
-    x = np.where(x < min_val, 0, x)  # Set values below q_min to 0
-    x = np.where(x > max_val, max_val, x)  # Set values above q_max to q_max
-    return x
 
 
 def scale_to_0_1(
@@ -76,32 +51,89 @@ def scale_to_0_1(
     return (x - min_val) / (max_val - min_val)
 
 
-def scale_marker_sum(
-    marker_list: list[str],
-    marker_dict: dict[str : np.ndarray],
+def preprocess_marker(
+    image: np.ndarray,
+    thresh_q_min: float = 0,
+    thresh_q_max: float = 1,
+    thresh_otsu: bool = True,
     scale: bool = True,
 ) -> np.ndarray:
     """
-    Sum scaled images of specified markers.
+    Helper function to preprocess a single marker image.
 
     Parameters
     ----------
-    marker_list : list
-        List of marker name to be scaled.
-    marker_dict : dict
-        Dictionary containing marker names as keys and corresponding images as values.
+    image : np.ndarray
+        Image to be preprocessed.
+    thresh_q_min : float, optional
+        Lower quantile to cut at. Values below this quantile will be set to 0.
+        Defaults to 0.
+    thresh_q_max : float, optional
+        Upper quantile to cut at. Values above this quantile will be set to
+        the quantile value. Defaults to 1.
+    thresh_otsu: bool, optional
+        Whether to perform OTSU thresholding to the image or not. Defaults
+        to True.
     scale : bool, optional
-        Whether to scale the images or not. Defaults to True.
+        Whether to scale the image or not. Defaults to True.
+
+    Returns
+    -------
+    np.ndarray
+        Preprocessed image.
+    """
+    if thresh_q_min != 0 or thresh_q_max != 1:
+        value_q_min = np.quantile(image, thresh_q_min)
+        value_q_max = np.quantile(image, thresh_q_max)
+        image = np.where(image < value_q_min, 0, image)
+        image = np.where(image > value_q_max, value_q_max, image)
+    if thresh_otsu:
+        _, mask_otsu = cv.threshold(
+            image, 0, 1, cv.THRESH_BINARY + cv.THRESH_OTSU
+        )
+        image = image * mask_otsu
+    if scale:
+        image = scale_to_0_1(image)
+    return image
+
+
+def construct_channel(
+    marker_list: list[str],
+    marker_dict: dict[str : np.ndarray],
+    thresh_q_min: float = 0,
+    thresh_q_max: float = 1,
+    thresh_otsu: bool = True,
+    scale: bool = True,
+) -> np.ndarray:
+    """
+    Construct a channel by summing scaled images of specified markers.
+
+    Parameters
+    ----------
+    marker_list : list[str]
+        List of marker names to be scaled and summed.
+    marker_dict : dict
+        Dictionary containing marker names as keys and corresponding images as
+        values.
+    thresh_q_min : float, optional
+        Lower quantile to cut at. Values below this quantile will be set to 0.
+        Defaults to 0.
+    thresh_q_max : float, optional
+        Upper quantile to cut at. Values above this quantile will be set to
+        the quantile value. Defaults to 1.
+    thresh_otsu: bool, optional
+        Whether to perform OTSU thresholding to the image or not. Defaults
+        to True.
+    scale : bool, optional
+        Whether to scale the image or not. Defaults to True.
 
     Returns
     -------
     np.ndarray
         Summed and scaled image of the specified markers.
     """
-    scaled = [
-        scale_to_0_1(marker_dict[marker]) if scale else marker_dict[marker]
-        for marker in marker_list
-    ]
+
+    # Check if any marker has constant value
     constant = [
         np.min(marker_dict[marker]) == np.max(marker_dict[marker])
         for marker in marker_list
@@ -110,18 +142,31 @@ def scale_marker_sum(
         logging.warning(
             f"Marker with constant value: {np.array(marker_list)[constant].tolist()}"
         )
-    scaled_sum = scale_to_0_1(np.sum(scaled, axis=0))
-    return scaled_sum
+
+    # Construct channel of the specified markers
+    image_list = [
+        preprocess_marker(
+            marker_dict[marker],
+            thresh_q_min=thresh_q_min,
+            thresh_q_max=thresh_q_max,
+            thresh_otsu=thresh_otsu,
+            scale=scale,
+        )
+        for marker in marker_list
+    ]
+    image_sum_scale = scale_to_0_1(np.sum(image_list, axis=0))
+    return image_sum_scale
 
 
-def segment_mesmer(
+def segmentation_mesmer(
     marker_dict: dict[str : np.ndarray],
-    boundary_markers: list[str],
     internal_markers: list[str],
+    boundary_markers: list[str],
+    thresh_q_min: float,
+    thresh_q_max: float,
+    thresh_otsu: bool,
+    scale: bool,
     pixel_size_um: float,
-    q_min: float = 0,
-    q_max: float = 1,
-    scale: bool = True,
     maxima_threshold: float = 0.075,
     interior_threshold: float = 0.20,
     compartment="whole-cell",
@@ -132,54 +177,70 @@ def segment_mesmer(
     Parameters
     ----------
     marker_dict : dict
-        Dictionary containing marker names as keys and corresponding images as values.
+        Dictionary containing marker names as keys and corresponding images as
+        values.
     boundary_markers : list
         List of boundary marker names.
     internal_markers : list
         List of internal marker names.
+    thresh_q_min : float, optional
+        Lower quantile to cut at for each marker in `internal_markers` and
+        `boundary_markers`. Values below this quantile will be set to 0.
+    thresh_q_max : float, optional
+        Upper quantile to cut at for each marker in `internal_markers` and
+        `boundary_markers`. Values above this quantile will be set to the
+        quantile value.
+    thresh_otsu: bool, optional
+        Whether to perform OTSU thresholding for each marker in `internal_markers`
+        and `boundary_markers`. Values below the OTSU threshold will be set to 0.
+    scale : bool, optional
+        Whether to scale each marker in `internal_markers` and `boundary_markers`
+        before summing.
     pixel_size_um : float
-        Pixel size in micrometers. Note:
+        Pixel size in micrometers for marker images.
+        Note:
         - Fusion: 0.5068164319979996
         - Keyence: 0.3775202
-    q_min : float, optional
-        Lower quantile to cut at. Defaults to 0.
-    q_max : float, optional
-        Upper quantile to cut at. Defaults to 1.
-    scale : bool, optional
-        Whether to scale the images or not. Defaults to True.
     maxima_threshold : float, optional
-        Maxima threshold, larger for fewer cells. Defaults to 0.075.
+        Maxima threshold for Mesmer. Lower values will result in more separate
+        cells being predicted, whereas higher values will result in fewer cells.
+        Defaults to 0.075.
     interior_threshold : float, optional
-        Interior threshold, larger for larger cells. Defaults to 0.20.
+        Interior threshold for Mesmer. Lower values will result in larger cells,
+        whereas higher values will result in smaller cells. Defaults to 0.20.
     compartment : str, optional
         Specify type of segmentation to predict. Must be one of "whole-cell",
         "nuclear", "both". Defaults to "whole-cell".
 
     Returns
     -------
-    Tuple
-        Segmentation mask, RGB image, overlay, stacked signals of boundary markers
-        and stacked signals of internal markers used for segmentation.
+    tuple[np.ndarray, np.ndarray, np.ndarray]
+        Segmentation mask, boundary channel, and internal channel.
     """
-    # Cut quantile
-    if q_min != 0 or q_max != 1:
-        marker_dict = {
-            key: cut_quantile(value, q_min=q_min, q_max=q_max)
-            for key, value in marker_dict.items()
-        }
-
-    # Data for markers
-    boundary_sum = scale_marker_sum(boundary_markers, marker_dict, scale=scale)
-    internal_sum = scale_marker_sum(internal_markers, marker_dict, scale=scale)
-
     # Data for Mesmer
-    seg_stack = np.stack((internal_sum, boundary_sum), axis=-1)
-    seg_stack = np.expand_dims(seg_stack, 0)
+    internal_channel = construct_channel(
+        marker_list=internal_markers,
+        marker_dict=marker_dict,
+        thresh_q_min=thresh_q_min,
+        thresh_q_max=thresh_q_max,
+        thresh_otsu=thresh_otsu,
+        scale=scale,
+    )
+    boundary_channel = construct_channel(
+        marker_list=boundary_markers,
+        marker_dict=marker_dict,
+        thresh_q_min=thresh_q_min,
+        thresh_q_max=thresh_q_max,
+        thresh_otsu=thresh_otsu,
+        scale=scale,
+    )
+    image_stack = np.stack((internal_channel, boundary_channel), axis=-1)
+    image_stack = np.expand_dims(image_stack, 0)
 
     # Do segmentation
     mesmer = Mesmer()
     segmentation_mask = mesmer.predict(
-        seg_stack,
+        image_stack,
         image_mpp=pixel_size_um,
         postprocess_kwargs_whole_cell={
             "maxima_threshold": maxima_threshold,
@@ -187,14 +248,8 @@ def segment_mesmer(
         },
         compartment=compartment,
     )
-    rgb_image = create_rgb_image(seg_stack, channel_colors=["blue", "green"])
-    overlay = make_outline_overlay(
-        rgb_data=rgb_image, predictions=segmentation_mask
-    )
     segmentation_mask = segmentation_mask[0, ..., 0]
-    rgb_image = rgb_image[0, ...]
-    overlay = overlay[0, ...]
-    return segmentation_mask, rgb_image, overlay, boundary_sum, internal_sum
+    return segmentation_mask, boundary_channel, internal_channel
 
 
 def extract_cell_features(
@@ -204,12 +259,21 @@ def extract_cell_features(
     """
     Extract single cell features from segmentation mask.
 
-    Args:
-        marker_dict (dict): Dictionary containing marker names as keys and corresponding images as values.
-        segmentation_mask (np.ndarray): Segmentation mask to extract single cell information.
+    Parameters
+    ----------
+    marker_dict : dict
+        Dictionary containing marker names as keys and corresponding images as
+        values.
+    segmentation_mask : np.ndarray
+        A 2D segmentation mask with the same shape as the marker images, in
+        which each cell is labeled with a unique integer.
 
-    Returns:
-        Tuple: DataFrames containing single cell data and size-scaled data.
+    Returns
+    -------
+    tuple[pd.DataFrame, pd.DataFrame]
+        - Dataframe containing single-cell features.
+        - Dataframe containing single-cell features with marker intensities
+          scaled by cell size.
     """
     marker_name = [marker for marker in marker_dict.keys()]
     marker_array = np.stack(
@@ -246,65 +310,76 @@ def extract_cell_features(
 
 
 def run_segmentation_mesmer(
-    output_dir: str,
-    boundary_markers: list[str],
+    unit_dir: str,
     internal_markers: list[str],
+    boundary_markers: list[str],
+    thresh_q_min: float,
+    thresh_q_max: float,
+    thresh_otsu: bool,
+    scale: bool,
     pixel_size_um: float,
-    q_min: float = 0,
-    q_max: float = 1,
-    scale: bool = True,
     maxima_threshold: float = 0.075,
     interior_threshold: float = 0.20,
     compartment="whole-cell",
     tag: str = None,
     ometiff_path: str = None,
-    mask_to_geojson: bool = False,
 ):
     """
     Run segmentation using Mesmer.
 
     Parameters
     ----------
-    output_dir : str
-        Output directory to save the results.
-    boundary_markers : list
-        List of boundary marker names.
+    unit_dir : str
+        Directory to load and save data for segmentation.
     internal_markers : list
         List of internal marker names.
+    boundary_markers : list
+        List of boundary marker names.
+    thresh_q_min : float, optional
+        Lower quantile to cut at for each marker in `internal_markers` and
+        `boundary_markers`. Values below this quantile will be set to 0.
+    thresh_q_max : float, optional
+        Upper quantile to cut at for each marker in `internal_markers` and
+        `boundary_markers`. Values above this quantile will be set to the
+        quantile value.
+    thresh_otsu: bool, optional
+        Whether to perform OTSU thresholding for each marker in `internal_markers`
+        and `boundary_markers`. Values below the OTSU threshold will be set to 0.
+    scale : bool, optional
+        Whether to scale each marker in `internal_markers` and `boundary_markers`
+        before summing.
     pixel_size_um : float
-        Pixel size in micrometers. Note:
+        Pixel size in micrometers for marker images.
+        Note:
         - Fusion: 0.5068164319979996
         - Keyence: 0.3775202
-    q_min : float, optional
-        Lower quantile to cut at. Defaults to 0.
-    q_max : float, optional
-        Upper quantile to cut at. Defaults to 1.
-    scale : bool, optional
-        Whether to scale the images or not. Defaults to True.
     maxima_threshold : float, optional
-        Maxima threshold, larger for fewer cells. Defaults to 0.075.
+        Maxima threshold for Mesmer. Lower values will result in more separate
+        cells being predicted, whereas higher values will result in fewer cells.
+        Defaults to 0.075.
     interior_threshold : float, optional
-        Interior threshold, larger for larger cells. Defaults to 0.20.
+        Interior threshold for Mesmer. Lower values will result in larger cells,
+        whereas higher values will result in smaller cells. Defaults to 0.20.
     compartment : str, optional
         Specify type of segmentation to predict. Must be one of "whole-cell",
         "nuclear", "both". Defaults to "whole-cell".
     tag : str, optional
-        Tag to append to the output directory. Defaults to None, using time as
-        tag (YYYYMMDD_HHMMSS).
+        Tag for the segmentation directory. Defaults to None, using time as tag
+        (YYYYMMDD_HHMMSS).
     ometiff_path : str, optional
-        Path to the input OME-TIFF file. Defaults to None, using the only one
-        OME-TIFF file under `output_dir`.
-    mask_to_geojson : bool, optional
-        Whether to generate a GeoJSON file for segmentation mask. Defaults to
-        False.
+        Path to the OME-TIFF file containing the marker images for segmentation.
+        Defaults to None, using the only OME-TIFF file in `unit_dir`.
     """
-    # Set up logging
-    dir_root = Path(output_dir)
+    # Set up directories
+    unit_dir = Path(unit_dir)
+    dir_root = Path(unit_dir)
     if tag is None:
         tag = time.strftime("%Y%m%d_%H%M%S")
-    dir_output = dir_root / tag
-    dir_output.mkdir(parents=True, exist_ok=True)
-    setup_logging(dir_output / "segmentation.log")
+    segmentation_dir = unit_dir / tag
+    segmentation_dir.mkdir(parents=True, exist_ok=True)
+
+    # Set up logging
+    setup_logging(segmentation_dir / "segmentation.log")
 
     # Load OME-TIFF file
     if ometiff_path is None:
@@ -321,87 +396,103 @@ def run_segmentation_mesmer(
             logging.info(f"OME-TIFF file loaded: {ometiff_path}.")
 
     # Check whether selected markers are present in the OME-TIFF file
-    all_markers = list(marker_dict.keys())
+    markers = list(marker_dict.keys())
     missing_markers = [
         marker
         for marker in boundary_markers + internal_markers
-        if marker not in all_markers
+        if marker not in markers
     ]
     if len(missing_markers) > 0:
         logging.error(f"Missing markers: {missing_markers}")
         raise ValueError(f"Missing markers: {missing_markers}")
 
     # Write parameters
-    config = {
-        "boundary_markers": boundary_markers,
+    params = {
         "internal_markers": internal_markers,
-        "pixel_size_um": pixel_size_um,
-        "q_min": q_min,
-        "q_max": q_max,
+        "boundary_markers": boundary_markers,
+        "thresh_q_min": thresh_q_min,
+        "thresh_q_max": thresh_q_max,
+        "thresh_otsu": thresh_otsu,
         "scale": scale,
+        "pixel_size_um": pixel_size_um,
         "maxima_threshold": maxima_threshold,
         "interior_threshold": interior_threshold,
         "compartment": compartment,
     }
     with open(
-        f"{dir_output}/parameter_segmentation.json", "w", encoding="utf-8"
+        f"{segmentation_dir}/parameter_segmentation.json", "w", encoding="utf-8"
     ) as file:
-        json.dump(config, file, indent=4, ensure_ascii=False)
+        json.dump(params, file, indent=4, ensure_ascii=False)
 
-    # Perform segmentation
-    try:
-        # Segmentation
-        segmentation_mask, _, _, boundary_sum, internal_sum = segment_mesmer(
-            boundary_markers=boundary_markers,
-            internal_markers=internal_markers,
-            marker_dict=marker_dict,
-            pixel_size_um=pixel_size_um,
-            q_min=q_min,
-            q_max=q_max,
-            scale=scale,
-            maxima_threshold=maxima_threshold,
-            interior_threshold=interior_threshold,
-            compartment=compartment,
-        )
-        path_segmentation_mask = dir_output / "segmentation_mask.tiff"
-        tifffile.imwrite(
-            path_segmentation_mask, segmentation_mask.astype(np.uint32)
-        )
-        logging.info("Segmentation completed.")
+    # Segmentation
+    segmentation_mask, boundary_channel, internal_channel = segmentation_mesmer(
+        marker_dict=marker_dict, **params
+    )
+    min_type = np.min_scalar_type(np.max(segmentation_mask).astype(np.int_))
+    segmentation_mask = segmentation_mask.astype(min_type)
+    segmentation_mask_f = segmentation_dir / "segmentation_mask.tiff"
+    tifffile.imwrite(str(segmentation_mask_f), segmentation_mask)
+    logging.info("Segmentation completed.")
 
-        # Save stacked signals of boundary and internal markers used for segmentation
-        if not scale:
-            boundary_sum = scale_to_0_1(boundary_sum)
-            internal_sum = scale_to_0_1(internal_sum)
-        dtype = marker_dict[internal_markers[0]].dtype
-        boundary_sum = (boundary_sum * np.iinfo(dtype).max).astype(dtype)
-        internal_sum = (internal_sum * np.iinfo(dtype).max).astype(dtype)
-        marker_seg_dict = {
-            marker: marker_dict[marker]
-            for marker in boundary_markers + internal_markers
-        }
-        marker_seg_dict["boundary_sum"] = boundary_sum
-        marker_seg_dict["internal_sum"] = internal_sum
-        path_marker_seg = dir_output / "segmentation_markers.ome.tiff"
-        if path_marker_seg.exists():
-            os.remove(path_marker_seg)
-        export_ometiff_pyramid_from_dict(marker_seg_dict, path_marker_seg)
-        logging.info("Markers used for segmentation saved as OME-TIFF.")
+    # Save markers for segmentation, boundary and internal channels
+    segmentation_markers_dict = {
+        marker: marker_dict[marker]
+        for marker in boundary_markers + internal_markers
+    }
+    vmax = np.max([np.max(img) for img in segmentation_markers_dict.values()])
+    min_type = np.min_scalar_type(vmax.astype(np.int_))
+    internal_channel = internal_channel * np.iinfo(min_type).max
+    boundary_channel = boundary_channel * np.iinfo(min_type).max
+    segmentation_markers_dict["internal_sum"] = internal_channel
+    segmentation_markers_dict["boundary_sum"] = boundary_channel
+    segmentation_markers_dict = {
+        marker: image.astype(min_type)
+        for marker, image in segmentation_markers_dict.items()
+    }
+    segmentation_markers_f = segmentation_dir / "segmentation_markers.ome.tiff"
+    if segmentation_markers_f.exists():
+        os.remove(segmentation_markers_f)
+    export_ometiff_pyramid_from_dict(
+        segmentation_markers_dict, str(segmentation_markers_f)
+    )
+    logging.info("Markers used for segmentation saved as OME-TIFF.")
 
-        # Extract single-cell features
-        data, data_scale_size = extract_cell_features(
-            marker_dict, segmentation_mask
-        )
-        data.to_csv(dir_output / "data.csv")
-        data_scale_size.to_csv(dir_output / "dataScaleSize.csv")
-        logging.info("Single-cell features extracted.")
+    # Extract single-cell features
+    data, data_scale = extract_cell_features(marker_dict, segmentation_mask)
+    data.to_csv(segmentation_dir / "data.csv")
+    data_scale.to_csv(segmentation_dir / "dataScaleSize.csv")
+    logging.info("Single-cell features extracted.")
 
-        # Generate GeoJSON file for segmentation mask
-        if mask_to_geojson:
-            mask_to_geojson_joblib(
-                segmentation_mask, dir_output / "segmentation_mask.geojson"
-            )
-            logging.info("Segmentation GeoJSON generated.")
 
-    except Exception as e:
-        logging.error(f"Segmentation failed: {e}")
+def generate_segmentation_mask_geojson(
+    unit_dir: str,
+    tag: str,
+    n_jobs: int = 10,
+    batch_size: int = 10,
+):
+    """
+    Generate GeoJSON file for segmentation mask.
+
+    Parameters
+    ----------
+    unit_dir : str
+        Directory to load and save data for segmentation.
+    tag : str
+        Tag for the segmentation directory, where the segmentation mask will
+        be used to generate the GeoJSON file.
+    n_jobs : int, optional
+        The number of parallel workers (CPU cores or threads) are spawned to
+        process the tasks. Default is 10.
+    batch_size : int, optional
+        The number of labels to process in each batch. Default is 10.
+    """
+    unit_dir = Path(unit_dir)
+    segmentation_dir = unit_dir / tag
+    segmentation_mask_f = segmentation_dir / "segmentation_mask.tiff"
+    segmentation_mask = tifffile.imread(segmentation_mask_f)
+    mask_to_geojson_joblib(
+        segmentation_mask,
+        segmentation_dir / "segmentation_mask.geojson",
+        n_jobs=n_jobs,
+        batch_size=batch_size,
+    )
