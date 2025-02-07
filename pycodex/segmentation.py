@@ -14,7 +14,7 @@ from deepcell.applications import Mesmer
 from pyqupath.geojson import mask_to_geojson_joblib
 from pyqupath.ometiff import export_ometiff_pyramid_from_dict, load_tiff_to_dict
 
-from pycodex.io import setup_logging
+from pycodex.io import setup_gpu, setup_logging
 
 ###############################################################################
 # segmentation
@@ -55,7 +55,7 @@ def preprocess_marker(
     image: np.ndarray,
     thresh_q_min: float = 0,
     thresh_q_max: float = 1,
-    thresh_otsu: bool = True,
+    thresh_otsu: bool = False,
     scale: bool = True,
 ) -> np.ndarray:
     """
@@ -73,7 +73,7 @@ def preprocess_marker(
         the quantile value. Defaults to 1.
     thresh_otsu: bool, optional
         Whether to perform OTSU thresholding to the image or not. Defaults
-        to True.
+        to False.
     scale : bool, optional
         Whether to scale the image or not. Defaults to True.
 
@@ -88,8 +88,9 @@ def preprocess_marker(
         image = np.where(image < value_q_min, 0, image)
         image = np.where(image > value_q_max, value_q_max, image)
     if thresh_otsu:
+        min_type = np.min_scalar_type(np.max(image).astype(np.int_))
         _, mask_otsu = cv.threshold(
-            image, 0, 1, cv.THRESH_BINARY + cv.THRESH_OTSU
+            image.astype(min_type), 0, 1, cv.THRESH_BINARY + cv.THRESH_OTSU
         )
         image = image * mask_otsu
     if scale:
@@ -102,7 +103,7 @@ def construct_channel(
     marker_dict: dict[str : np.ndarray],
     thresh_q_min: float = 0,
     thresh_q_max: float = 1,
-    thresh_otsu: bool = True,
+    thresh_otsu: bool = False,
     scale: bool = True,
 ) -> np.ndarray:
     """
@@ -123,7 +124,7 @@ def construct_channel(
         the quantile value. Defaults to 1.
     thresh_otsu: bool, optional
         Whether to perform OTSU thresholding to the image or not. Defaults
-        to True.
+        to False.
     scale : bool, optional
         Whether to scale the image or not. Defaults to True.
 
@@ -248,7 +249,6 @@ def segmentation_mesmer(
         },
         compartment=compartment,
     )
-    segmentation_mask = segmentation_mask[0, ..., 0]
     return segmentation_mask, boundary_channel, internal_channel
 
 
@@ -309,7 +309,7 @@ def extract_cell_features(
     return data, data_scale_size
 
 
-def run_segmentation_mesmer(
+def run_segmentation_mesmer_cell(
     unit_dir: str,
     internal_markers: list[str],
     boundary_markers: list[str],
@@ -320,12 +320,11 @@ def run_segmentation_mesmer(
     pixel_size_um: float,
     maxima_threshold: float = 0.075,
     interior_threshold: float = 0.20,
-    compartment="whole-cell",
     tag: str = None,
     ometiff_path: str = None,
 ):
     """
-    Run segmentation using Mesmer.
+    Run whole-cell segmentation using Mesmer.
 
     Parameters
     ----------
@@ -360,9 +359,6 @@ def run_segmentation_mesmer(
     interior_threshold : float, optional
         Interior threshold for Mesmer. Lower values will result in larger cells,
         whereas higher values will result in smaller cells. Defaults to 0.20.
-    compartment : str, optional
-        Specify type of segmentation to predict. Must be one of "whole-cell",
-        "nuclear", "both". Defaults to "whole-cell".
     tag : str, optional
         Tag for the segmentation directory. Defaults to None, using time as tag
         (YYYYMMDD_HHMMSS).
@@ -372,7 +368,6 @@ def run_segmentation_mesmer(
     """
     # Set up directories
     unit_dir = Path(unit_dir)
-    dir_root = Path(unit_dir)
     if tag is None:
         tag = time.strftime("%Y%m%d_%H%M%S")
     segmentation_dir = unit_dir / tag
@@ -383,7 +378,7 @@ def run_segmentation_mesmer(
 
     # Load OME-TIFF file
     if ometiff_path is None:
-        ometiff_paths = list(dir_root.glob("*.ome.tiff"))
+        ometiff_paths = list(unit_dir.glob("*.ome.tiff"))
         if len(ometiff_paths) == 0:
             logging.error("No OME-TIFF file found in the directory.")
             raise FileNotFoundError("No OME-TIFF file found in the directory.")
@@ -417,7 +412,7 @@ def run_segmentation_mesmer(
         "pixel_size_um": pixel_size_um,
         "maxima_threshold": maxima_threshold,
         "interior_threshold": interior_threshold,
-        "compartment": compartment,
+        "compartment": "whole-cell",
     }
     with open(
         f"{segmentation_dir}/parameter_segmentation.json", "w", encoding="utf-8"
@@ -428,6 +423,7 @@ def run_segmentation_mesmer(
     segmentation_mask, boundary_channel, internal_channel = segmentation_mesmer(
         marker_dict=marker_dict, **params
     )
+    segmentation_mask = segmentation_mask[0, :, :, 0]
     min_type = np.min_scalar_type(np.max(segmentation_mask).astype(np.int_))
     segmentation_mask = segmentation_mask.astype(min_type)
     segmentation_mask_f = segmentation_dir / "segmentation_mask.tiff"
@@ -496,3 +492,53 @@ def generate_segmentation_mask_geojson(
         n_jobs=n_jobs,
         batch_size=batch_size,
     )
+
+
+# %%
+if __name__ == "__main__":
+    setup_gpu("1")
+
+    unit_dir = Path(__file__).parent.parent / "test"
+    internal_markers = ["DAPI"]
+    boundary_markers = ["CD45", "CD3e", "CD163", "NaKATP"]
+    thresh_q_min = 0
+    thresh_q_max = 0.99
+    thresh_otsu = False
+    scale = True
+    pixel_size_um = 0.5068164319979996
+    maxima_threshold = 0.075
+    interior_threshold = 0.20
+    tag = "otsu=True"
+    ometiff_path = None
+
+    run_segmentation_mesmer_cell(
+        unit_dir=unit_dir,
+        internal_markers=internal_markers,
+        boundary_markers=boundary_markers,
+        thresh_q_min=thresh_q_min,
+        thresh_q_max=thresh_q_max,
+        thresh_otsu=thresh_otsu,
+        scale=scale,
+        pixel_size_um=pixel_size_um,
+        maxima_threshold=maxima_threshold,
+        interior_threshold=interior_threshold,
+        tag=tag,
+        ometiff_path=ometiff_path,
+    )
+    generate_segmentation_mask_geojson(unit_dir, tag)
+
+    run_segmentation_mesmer_cell(
+        unit_dir=unit_dir,
+        internal_markers=internal_markers,
+        boundary_markers=boundary_markers,
+        thresh_q_min=thresh_q_min,
+        thresh_q_max=thresh_q_max,
+        thresh_otsu=False,
+        scale=scale,
+        pixel_size_um=pixel_size_um,
+        maxima_threshold=maxima_threshold,
+        interior_threshold=interior_threshold,
+        tag="otsu=False",
+        ometiff_path=ometiff_path,
+    )
+    generate_segmentation_mask_geojson(unit_dir, "otsu=False")
