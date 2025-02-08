@@ -82,6 +82,7 @@ def preprocess_marker(
     np.ndarray
         Preprocessed image.
     """
+
     if thresh_q_min != 0 or thresh_q_max != 1:
         value_q_min = np.quantile(image, thresh_q_min)
         value_q_max = np.quantile(image, thresh_q_max)
@@ -92,10 +93,9 @@ def preprocess_marker(
         _, mask_otsu = cv.threshold(
             image.astype(min_type), 0, 1, cv.THRESH_BINARY + cv.THRESH_OTSU
         )
-        image = image * mask_otsu
     if scale:
         image = scale_to_0_1(image)
-    return image
+    return image if not thresh_otsu else image * mask_otsu
 
 
 def construct_channel(
@@ -107,7 +107,7 @@ def construct_channel(
     scale: bool = True,
 ) -> np.ndarray:
     """
-    Construct a channel by summing scaled images of specified markers.
+    Construct a channel by images of specified markers.
 
     Parameters
     ----------
@@ -131,7 +131,7 @@ def construct_channel(
     Returns
     -------
     np.ndarray
-        Summed and scaled image of the specified markers.
+        Mean of the images of the specified markers after preprocessing.
     """
 
     # Check if any marker has constant value
@@ -145,8 +145,8 @@ def construct_channel(
         )
 
     # Construct channel of the specified markers
-    image_list = [
-        preprocess_marker(
+    image_dict = {
+        marker: preprocess_marker(
             marker_dict[marker],
             thresh_q_min=thresh_q_min,
             thresh_q_max=thresh_q_max,
@@ -154,9 +154,9 @@ def construct_channel(
             scale=scale,
         )
         for marker in marker_list
-    ]
-    image_sum_scale = scale_to_0_1(np.sum(image_list, axis=0))
-    return image_sum_scale
+    }
+    image_channel = np.mean([image for image in image_dict.values()], axis=0)
+    return image_channel, image_dict
 
 
 def segmentation_mesmer(
@@ -219,7 +219,7 @@ def segmentation_mesmer(
         Segmentation mask, boundary channel, and internal channel.
     """
     # Data for Mesmer
-    internal_channel = construct_channel(
+    internal_channel, internal_dict = construct_channel(
         marker_list=internal_markers,
         marker_dict=marker_dict,
         thresh_q_min=thresh_q_min,
@@ -227,7 +227,7 @@ def segmentation_mesmer(
         thresh_otsu=thresh_otsu,
         scale=scale,
     )
-    boundary_channel = construct_channel(
+    boundary_channel, boundary_dict = construct_channel(
         marker_list=boundary_markers,
         marker_dict=marker_dict,
         thresh_q_min=thresh_q_min,
@@ -249,7 +249,13 @@ def segmentation_mesmer(
         },
         compartment=compartment,
     )
-    return segmentation_mask, boundary_channel, internal_channel
+    return (
+        segmentation_mask,
+        internal_channel,
+        boundary_channel,
+        internal_dict,
+        boundary_dict,
+    )
 
 
 def extract_cell_features(
@@ -420,9 +426,13 @@ def run_segmentation_mesmer_cell(
         json.dump(params, file, indent=4, ensure_ascii=False)
 
     # Segmentation
-    segmentation_mask, boundary_channel, internal_channel = segmentation_mesmer(
-        marker_dict=marker_dict, **params
-    )
+    (
+        segmentation_mask,
+        internal_channel,
+        boundary_channel,
+        internal_dict,
+        boundary_dict,
+    ) = segmentation_mesmer(marker_dict=marker_dict, **params)
     segmentation_mask = segmentation_mask[0, :, :, 0]
     min_type = np.min_scalar_type(np.max(segmentation_mask).astype(np.int_))
     segmentation_mask = segmentation_mask.astype(min_type)
@@ -431,20 +441,29 @@ def run_segmentation_mesmer_cell(
     logging.info("Segmentation completed.")
 
     # Save markers for segmentation, boundary and internal channels
-    segmentation_markers_dict = {
-        marker: marker_dict[marker]
-        for marker in boundary_markers + internal_markers
-    }
-    vmax = np.max([np.max(img) for img in segmentation_markers_dict.values()])
+    segmentation_markers_dict = {}
+    segmentation_markers_dict.update(internal_dict)
+    segmentation_markers_dict.update(boundary_dict)
+    vmax = np.max([np.max(img) for img in marker_dict.values()])
     min_type = np.min_scalar_type(vmax.astype(np.int_))
-    internal_channel = internal_channel * np.iinfo(min_type).max
-    boundary_channel = boundary_channel * np.iinfo(min_type).max
-    segmentation_markers_dict["internal_sum"] = internal_channel
-    segmentation_markers_dict["boundary_sum"] = boundary_channel
-    segmentation_markers_dict = {
-        marker: image.astype(min_type)
-        for marker, image in segmentation_markers_dict.items()
-    }
+    if scale:
+        segmentation_markers_dict["internal_sum"] = internal_channel
+        segmentation_markers_dict["boundary_sum"] = boundary_channel
+        segmentation_markers_dict = {
+            marker: (image * np.iinfo(min_type).max).astype(min_type)
+            for marker, image in segmentation_markers_dict.items()
+        }
+    else:
+        segmentation_markers_dict["internal_sum"] = (
+            internal_channel * np.iinfo(min_type).max
+        )
+        segmentation_markers_dict["boundary_sum"] = (
+            boundary_channel * np.iinfo(min_type).max
+        )
+        segmentation_markers_dict = {
+            marker: image.astype(min_type)
+            for marker, image in marker_dict.items()
+        }
     segmentation_markers_f = segmentation_dir / "segmentation_markers.ome.tiff"
     if segmentation_markers_f.exists():
         os.remove(segmentation_markers_f)
@@ -503,14 +522,14 @@ if __name__ == "__main__":
     boundary_markers = ["CD45", "CD3e", "CD163", "NaKATP"]
     thresh_q_min = 0
     thresh_q_max = 0.99
-    thresh_otsu = False
     scale = True
     pixel_size_um = 0.5068164319979996
     maxima_threshold = 0.075
     interior_threshold = 0.20
-    tag = "otsu=True"
     ometiff_path = None
 
+    thresh_otsu = True
+    tag = f"otsu={thresh_otsu}"
     run_segmentation_mesmer_cell(
         unit_dir=unit_dir,
         internal_markers=internal_markers,
@@ -527,6 +546,8 @@ if __name__ == "__main__":
     )
     generate_segmentation_mask_geojson(unit_dir, tag)
 
+    thresh_otsu = False
+    tag = f"otsu={thresh_otsu}"
     run_segmentation_mesmer_cell(
         unit_dir=unit_dir,
         internal_markers=internal_markers,
@@ -541,4 +562,4 @@ if __name__ == "__main__":
         tag="otsu=False",
         ometiff_path=ometiff_path,
     )
-    generate_segmentation_mask_geojson(unit_dir, "otsu=False")
+    generate_segmentation_mask_geojson(unit_dir, tag)
