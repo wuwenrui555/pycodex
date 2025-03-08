@@ -1,11 +1,19 @@
 import itertools
+import logging
+import os
+import pickle as pkl
+import re
 
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import tifffile
+from IPython.display import display
 from scipy.ndimage import map_coordinates
 from tqdm import tqdm
+
+from pycodex import io, metadata
 
 ########################################################################################################################
 # SIFH
@@ -173,8 +181,8 @@ class SIFTMatcher:
         Computes the affine transformation matrix between the source and destination images.
 
         Args:
-            ratio_threshold (float, optional): A threshold value for Lowe's ratio test to determine good matches. 
-                Default is 0.60.
+            ratio_threshold (float, optional): A threshold value for Lowe's ratio test to determine good matches.
+                Default is the value set by set_lowe_ratio_threshold().
 
         Returns:
             tuple: A tuple containing:
@@ -256,3 +264,310 @@ def apply_blank_mask(im, blank_mask):
     masked_im = np.clip(im, 0, 65535).astype(np.uint16)
 
     return masked_im
+
+########################################################################################################################
+# Align Images of Different Runs
+########################################################################################################################
+
+
+def sift_align_src_on_dst_coordinate(
+    id: str,
+    dir_dst: str,
+    dir_src: str,
+    path_parameter: str,
+    dir_output: str,
+    src_rot90cw: int = 0,
+    src_hflip: bool = False,
+    name_output_dst: str = "dst",
+    name_output_src: str = "src",
+):
+    """
+    Aligns and processes images from two separate runs (align source image on coordinates of destination image).
+
+    Parameters
+    ----------
+    id: str
+        Unique identifier for the alignment.
+    dir_dst : str
+        Path to the directory containing destination images.
+    dir_src : str
+        Path to directory containing source images will be aligned to the coordinates of the destination images.
+    path_parameter : str
+        Path to the `sift_parameter.pkl` file storing parameters for the SIFT alignment process, generated iteratively
+        using the `01_sift_plot_src_on_dst_coordinate.ipynb` notebook.
+    dir_output : str
+        Path to directory where the alignment results are saved.
+    src_rot90cw : int, optional
+        Number of times to rotate the source images 90 degrees clockwise. Defaults to 0 (no rotation).
+    src_hflip : bool, optional
+        If True, horizontally flips the source images. Defaults to False.
+    name_output_dst : str, optional
+        The name of subfolder under `dir_output` for saving output of the processed destination images. Defaults to "dst".
+    name_output_src : str, optional
+        The name of subfolder under `dir_output` for saving output of the aligned source images. Defaults to "src".
+
+    Returns
+    -------
+    None
+    """
+
+    try:
+        # Load SIFT parameters
+        with open(path_parameter, "rb") as f:
+            data = pkl.load(f)
+        logging.info("SIFT parameters loaded successfully.")
+    except FileNotFoundError:
+        logging.error(f"Parameter file not found: {path_parameter}")
+        return
+
+    # Load marker lists and metadata
+    dst_metadata_dict = io.organize_metadata_fusion(dir_dst, subfolders=False)
+    dst_unique_markers, _, _, _ = metadata.summary_markers(dst_metadata_dict)
+    src_metadata_dict = io.organize_metadata_fusion(dir_src, subfolders=False)
+    src_unique_markers, _, _, _ = metadata.summary_markers(src_metadata_dict)
+
+    # Rename markers to avoid duplicates
+    dst_unique_markers_renamed = io.rename_duplicate_markers(dst_unique_markers)
+    src_unique_markers_renamed = io.rename_duplicate_markers(src_unique_markers)
+
+    # Load source and destination image file information
+    def load_tiff_files(directory: str) -> dict[str, str]:
+        """
+        Helper function to load TIFF image file names from a specified directory.
+
+        Parameters
+        ----------
+        directory : str
+            Path to the directory containing the image files.
+
+        Returns
+        -------
+        dict[str, str]
+            A dictionary where the keys are the file names (without extensions)
+            and the values are the full file names (with extensions) of TIFF files
+            in the directory.
+        """
+        tiff_files = {
+            os.path.splitext(file)[0]: file
+            for file in os.listdir(directory)
+            if os.path.splitext(file)[1].lower() in [".tiff", ".tif"]
+        }
+        return tiff_files
+
+    src_files_dict = load_tiff_files(dir_src)
+    dst_files_dict = load_tiff_files(dir_dst)
+
+    # Align and process images
+    def process_image(marker, path_marker, output_path, transform=True):
+        """
+        Helper function to align and process images with optional transformations.
+
+        Parameters:
+        -----------
+        marker : str
+            The name or identifier for the marker image being processed.
+        path_marker : str
+            The file path to the marker image to be processed.
+        output_path : str
+            The file path where the processed image will be saved.
+        transform : bool, optional
+            If True, the function applies transformations (rotation, flip, affine transformations, and masking).
+            If False, only a blank mask is applied. Default is True.
+
+        Returns:
+        --------
+        None
+        """
+        if os.path.exists(path_marker):
+            im = tifffile.imread(path_marker)
+            if transform:
+                effective_rotation = src_rot90cw % 4
+                if effective_rotation != 0:
+                    rotateCode = {1: cv2.ROTATE_90_CLOCKWISE, 2: cv2.ROTATE_180, 3: cv2.ROTATE_90_COUNTERCLOCKWISE}[
+                        effective_rotation
+                    ]
+                    im = cv2.rotate(im, rotateCode)
+                if src_hflip:
+                    im = cv2.flip(im, 1)
+                logging.info(f"{marker}: image loaded and transformed")
+
+                im_warped, _ = apply_affine_transformation(im, data["output_shape"], data["H_inverse"])
+                logging.info(f"{marker}: affine transformation applied")
+
+                im_masked = apply_blank_mask(im_warped, data["blank_mask"])
+                logging.info(f"{marker}: blank mask applied")
+            else:
+                im_masked = apply_blank_mask(im, data["blank_mask"])
+                logging.info(f"{marker}: blank mask applied without transformation")
+            tifffile.imwrite(output_path, im_masked)
+            logging.info(f"{marker}: saved successfully to {output_path}")
+        else:
+            logging.warning(f"File not found: {path_marker}")
+
+    ## Source images
+    dir_output_src = os.path.join(dir_output, id, name_output_src)
+    os.makedirs(dir_output_src, exist_ok=True)
+    for i, marker in tqdm(enumerate(src_unique_markers), desc="Source images", total=len(src_unique_markers)):
+        path_marker = os.path.join(dir_src, src_files_dict.get(marker, ""))
+        path_output = os.path.join(dir_output_src, f"{src_unique_markers_renamed[i]}.tiff")
+        process_image(marker, path_marker, path_output, transform=True)
+
+    ## Destination images
+    dir_output_dst = os.path.join(dir_output, id, name_output_dst)
+    os.makedirs(dir_output_dst, exist_ok=True)
+    for i, marker in tqdm(enumerate(dst_unique_markers), desc="Destination images", total=len(dst_unique_markers)):
+        path_marker = os.path.join(dir_dst, dst_files_dict.get(marker, ""))
+        path_output = os.path.join(dir_output_dst, f"{dst_unique_markers_renamed[i]}.tiff")
+        process_image(marker, path_marker, path_output, transform=False)
+
+
+def display_aligned_markers(dir_id: str):
+    """
+    Displays the aligned markers of different runs.
+
+    Parameters
+    ----------
+    dir_id : str
+        Path to the directory containing the aligned markers.
+
+    Returns
+    -------
+    None
+    """
+    # Load the metadata
+    metadata_id = io.organize_metadata_keyence(dir_id, subfolders=True)
+    df_metadata_id = pd.concat([value for key, value in metadata_id.items()])
+    df_metadata_id.rename(
+        columns={
+            "region": "run",
+            "_region": "region",
+        },
+        inplace=True,
+    )
+
+    # Pivot the DataFrame
+    df_pivoted = df_metadata_id.pivot_table(
+        index=["run", "region", "cycle"],
+        columns="channel",
+        values="marker",
+        aggfunc=",".join,
+    ).fillna("")
+    df_pivoted.columns.name = None
+    df_pivoted.reset_index(inplace=True)
+    df_pivoted.rename(
+        columns={
+            "ch001": "ch001 (DAPI)",
+            "ch002": "ch002 (AF488)",
+            "ch003": "ch003 (ATTO550/cy3)",
+            "ch004": "ch004 (AF647/cy5)",
+        },
+        inplace=True,
+    )
+
+    # Display the DataFrame by run
+    for run in sorted(df_pivoted["run"].unique()):
+        display(df_pivoted[df_pivoted["run"] == run])
+
+
+def export_marker_metadata_keyence(dir_region: str, dir_output: str):
+    """
+    Exports marker metadata to an Excel file with multiple sheets.
+
+    This function processes metadata for a given region directory, organizes the marker information,
+    and writes the data into an Excel file. Each run's metadata is saved as a separate sheet, and a
+    summary sheet for marker order is included.
+
+    Parameters
+    ----------
+    dir_region : str
+        The path to the region directory containing marker metadata for processing.
+    dir_output : str
+        The path to the output directory where the Excel file will be saved.
+
+    Returns
+    -------
+    None
+        The function saves an Excel file with multiple sheets to the specified output directory.
+
+    Notes
+    -----
+    - Each sheet corresponds to a run and contains the following columns:
+        - `marker`: Marker names.
+        - `is_blank`: Boolean flag indicating whether the marker is a blank.
+        - `is_dapi`: Boolean flag indicating whether the marker is a DAPI marker.
+        - `is_marker`: Boolean flag indicating whether the marker is a valid marker (not blank or DAPI).
+        - `is_kept`: An empty column for user-defined marker retention.
+    - The `marker_order` sheet contains column headers for each run for user-defined marker order.
+    """
+    os.makedirs(dir_output, exist_ok=True)
+
+    region_id = os.path.basename(dir_region)
+    path_excel = os.path.join(dir_output, f"{region_id}.xlsx")
+    with pd.ExcelWriter(path_excel) as writer:
+        # sheet for marker metadata of each run
+        marker_metadata = io.organize_metadata_keyence(dir_region, subfolders=True)
+        run_list = sorted(marker_metadata.keys())
+        for run in run_list:
+            df_marker = marker_metadata[run]
+            df_marker = df_marker.drop(columns=["region"])
+            df_marker["marker_name"] = df_marker["marker"]
+            df_marker["marker"] = run + "-" + df_marker["marker"]
+            # add flag columns
+            df_marker["is_blank"] = df_marker["marker_name"].str.contains("blank", case=False, na=False)
+            df_marker["is_dapi"] = df_marker["marker_name"].str.match(r"Ch\d+Cy\d+", flags=re.IGNORECASE)
+            df_marker["is_marker"] = (~df_marker["is_blank"]) & (~df_marker["is_dapi"])
+            df_marker["is_kept"] = ""
+            # save to Excel with the run name as the sheet name
+            df_marker.to_excel(writer, sheet_name=run, index=False)
+
+
+def export_marker_metadata_fusion(dir_region: str, dir_output: str):
+    """
+    Exports marker metadata to an Excel file with multiple sheets.
+
+    This function processes metadata for a given region directory, organizes the marker information,
+    and writes the data into an Excel file. Each run's metadata is saved as a separate sheet, and a
+    summary sheet for marker order is included.
+
+    Parameters
+    ----------
+    dir_region : str
+        The path to the region directory containing marker metadata for processing.
+    dir_output : str
+        The path to the output directory where the Excel file will be saved.
+
+    Returns
+    -------
+    None
+        The function saves an Excel file with multiple sheets to the specified output directory.
+
+    Notes
+    -----
+    - Each sheet corresponds to a run and contains the following columns:
+        - `marker`: Marker names.
+        - `is_blank`: Boolean flag indicating whether the marker is a blank.
+        - `is_dapi`: Boolean flag indicating whether the marker is a DAPI marker.
+        - `is_marker`: Boolean flag indicating whether the marker is a valid marker (not blank or DAPI).
+        - `is_kept`: An empty column for user-defined marker retention.
+    - The `marker_order` sheet contains column headers for each run for user-defined marker order.
+    """
+    os.makedirs(dir_output, exist_ok=True)
+
+    region_id = os.path.basename(dir_region)
+    path_excel = os.path.join(dir_output, f"{region_id}.xlsx")
+    with pd.ExcelWriter(path_excel) as writer:
+        # sheet for marker metadata of each run
+        marker_metadata = io.organize_metadata_fusion(dir_region, subfolders=True)
+        run_list = sorted(marker_metadata.keys())
+        for run in run_list:
+            df_marker = marker_metadata[run]
+            df_marker = df_marker.drop(columns=["region"])
+            df_marker["marker_name"] = df_marker["marker"]
+            df_marker["marker"] = run + "-" + df_marker["marker"]
+            # add flag columns
+            df_marker["is_blank"] = df_marker["marker_name"].str.contains("blank", case=False, na=False)
+            df_marker["is_dapi"] = df_marker["marker_name"].str.contains("dapi", case=False, na=False)
+            df_marker["is_marker"] = (~df_marker["is_blank"]) & (~df_marker["is_dapi"])
+            df_marker["is_kept"] = ""
+            # save to Excel with the run name as the sheet name
+            df_marker.to_excel(writer, sheet_name=run, index=False)
