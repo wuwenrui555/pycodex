@@ -1,0 +1,19 @@
+{
+    "internal_markers": [
+        "DAPI"
+    ],
+    "boundary_markers": [
+        "CD45",
+        "CD3e",
+        "CD163",
+        "NaKATP"
+    ],
+    "thresh_q_min": 0,
+    "thresh_q_max": 0.99,
+    "thresh_otsu": false,
+    "scale": true,
+    "pixel_size_um": 0.5068164319979996,
+    "maxima_threshold": 0.075,
+    "interior_threshold": 0.2,
+    "compartment": "whole-cell"
+}
