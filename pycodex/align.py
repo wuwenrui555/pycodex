@@ -93,12 +93,16 @@ class SIFTMatcher:
                 bool: True if the two line segments intersect, otherwise False.
             """
             # Check if the endpoints of the two line segments are on different sides
-            return ccw(p1, p2, q2) != ccw(q1, p2, q2) and ccw(p1, q1, p2) != ccw(p1, q1, q2)
+            return ccw(p1, p2, q2) != ccw(q1, p2, q2) and ccw(p1, q1, p2) != ccw(
+                p1, q1, q2
+            )
 
         # Iterate over different ratio thresholds
         intersections = []
         for ratio in tqdm(np.arange(ratio_min, ratio_max, ratio_step)):
-            good_matches = [m for m, n in self.matches if m.distance <= ratio * n.distance]
+            good_matches = [
+                m for m, n in self.matches if m.distance <= ratio * n.distance
+            ]
             n_combination = 0
             n_intersection = 0
 
@@ -110,7 +114,14 @@ class SIFTMatcher:
                     n_intersection += 1
                 n_combination += 1
             if n_combination > 0:
-                intersections.append([ratio, n_intersection, n_combination, n_intersection / n_combination])
+                intersections.append(
+                    [
+                        ratio,
+                        n_intersection,
+                        n_combination,
+                        n_intersection / n_combination,
+                    ]
+                )
         self.intersections = pd.DataFrame(
             intersections,
             columns=["ratio", "n_intersection", "n_combination", "percentage"],
@@ -157,7 +168,9 @@ class SIFTMatcher:
         """
         print("Apply Lowe's ratio threshold")
         self.ratio_threshold = ratio_threshold
-        self.good_matches = [m for m, n in self.matches if m.distance / n.distance < ratio_threshold]
+        self.good_matches = [
+            m for m, n in self.matches if m.distance / n.distance < ratio_threshold
+        ]
 
         # Get the coordinates for lines to be drawn
         img_matches = cv2.drawMatches(
@@ -171,9 +184,9 @@ class SIFTMatcher:
         )
 
         fig, ax = plt.subplots(figsize=figsize)
-        ax.imshow(img_matches)        
+        ax.imshow(img_matches)
         plt.close(fig)
-        
+
         return fig
 
     def compute_affine_matrix(self, ratio_threshold=None):
@@ -191,11 +204,17 @@ class SIFTMatcher:
         """
         if ratio_threshold is None:
             ratio_threshold = self.ratio_threshold
-        self.good_matches = [m for m, n in self.matches if m.distance / n.distance < ratio_threshold]
+        self.good_matches = [
+            m for m, n in self.matches if m.distance / n.distance < ratio_threshold
+        ]
 
         print("Extract matched keypoints")
-        src_pts = np.float32([self.kp1[m.queryIdx].pt for m in self.good_matches]).reshape(-1, 1, 2)
-        dst_pts = np.float32([self.kp2[m.trainIdx].pt for m in self.good_matches]).reshape(-1, 1, 2)
+        src_pts = np.float32(
+            [self.kp1[m.queryIdx].pt for m in self.good_matches]
+        ).reshape(-1, 1, 2)
+        dst_pts = np.float32(
+            [self.kp2[m.trainIdx].pt for m in self.good_matches]
+        ).reshape(-1, 1, 2)
         print("Compute affine transformation")
         H, _ = cv2.estimateAffinePartial2D(src_pts, dst_pts)
         H[0, 2] *= self.step
@@ -205,7 +224,9 @@ class SIFTMatcher:
         return H, H_inverse
 
 
-def apply_affine_transformation(im_src: np.ndarray, output_shape: tuple[int, int], H_inverse: np.ndarray):
+def apply_affine_transformation(
+    im_src: np.ndarray, output_shape: tuple[int, int], H_inverse: np.ndarray
+):
     """
     Applies an affine transformation to warp the source image to the destination image's coordinate space.
 
@@ -229,7 +250,12 @@ def apply_affine_transformation(im_src: np.ndarray, output_shape: tuple[int, int
     src_y = src_coords[1, :].reshape(output_shape)
 
     # Check for out-of-bounds coordinates before interpolation
-    valid_mask = (src_x >= 0) & (src_x < im_src.shape[1]) & (src_y >= 0) & (src_y < im_src.shape[0])
+    valid_mask = (
+        (src_x >= 0)
+        & (src_x < im_src.shape[1])
+        & (src_y >= 0)
+        & (src_y < im_src.shape[0])
+    )
 
     # Initialize the transformed image with zeros (for out-of-bounds regions)
     transformed_im_src = np.zeros(output_shape, dtype=im_src.dtype)
@@ -264,6 +290,7 @@ def apply_blank_mask(im, blank_mask):
     masked_im = np.clip(im, 0, 65535).astype(np.uint16)
 
     return masked_im
+
 
 ########################################################################################################################
 # Align Images of Different Runs
@@ -383,15 +410,19 @@ def sift_align_src_on_dst_coordinate(
             if transform:
                 effective_rotation = src_rot90cw % 4
                 if effective_rotation != 0:
-                    rotateCode = {1: cv2.ROTATE_90_CLOCKWISE, 2: cv2.ROTATE_180, 3: cv2.ROTATE_90_COUNTERCLOCKWISE}[
-                        effective_rotation
-                    ]
+                    rotateCode = {
+                        1: cv2.ROTATE_90_CLOCKWISE,
+                        2: cv2.ROTATE_180,
+                        3: cv2.ROTATE_90_COUNTERCLOCKWISE,
+                    }[effective_rotation]
                     im = cv2.rotate(im, rotateCode)
                 if src_hflip:
                     im = cv2.flip(im, 1)
                 logging.info(f"{marker}: image loaded and transformed")
 
-                im_warped, _ = apply_affine_transformation(im, data["output_shape"], data["H_inverse"])
+                im_warped, _ = apply_affine_transformation(
+                    im, data["output_shape"], data["H_inverse"]
+                )
                 logging.info(f"{marker}: affine transformation applied")
 
                 im_masked = apply_blank_mask(im_warped, data["blank_mask"])
@@ -407,17 +438,29 @@ def sift_align_src_on_dst_coordinate(
     ## Source images
     dir_output_src = os.path.join(dir_output, id, name_output_src)
     os.makedirs(dir_output_src, exist_ok=True)
-    for i, marker in tqdm(enumerate(src_unique_markers), desc="Source images", total=len(src_unique_markers)):
+    for i, marker in tqdm(
+        enumerate(src_unique_markers),
+        desc="Source images",
+        total=len(src_unique_markers),
+    ):
         path_marker = os.path.join(dir_src, src_files_dict.get(marker, ""))
-        path_output = os.path.join(dir_output_src, f"{src_unique_markers_renamed[i]}.tiff")
+        path_output = os.path.join(
+            dir_output_src, f"{src_unique_markers_renamed[i]}.tiff"
+        )
         process_image(marker, path_marker, path_output, transform=True)
 
     ## Destination images
     dir_output_dst = os.path.join(dir_output, id, name_output_dst)
     os.makedirs(dir_output_dst, exist_ok=True)
-    for i, marker in tqdm(enumerate(dst_unique_markers), desc="Destination images", total=len(dst_unique_markers)):
+    for i, marker in tqdm(
+        enumerate(dst_unique_markers),
+        desc="Destination images",
+        total=len(dst_unique_markers),
+    ):
         path_marker = os.path.join(dir_dst, dst_files_dict.get(marker, ""))
-        path_output = os.path.join(dir_output_dst, f"{dst_unique_markers_renamed[i]}.tiff")
+        path_output = os.path.join(
+            dir_output_dst, f"{dst_unique_markers_renamed[i]}.tiff"
+        )
         process_image(marker, path_marker, path_output, transform=False)
 
 
@@ -513,8 +556,12 @@ def export_marker_metadata_keyence(dir_region: str, dir_output: str):
             df_marker["marker_name"] = df_marker["marker"]
             df_marker["marker"] = run + "-" + df_marker["marker"]
             # add flag columns
-            df_marker["is_blank"] = df_marker["marker_name"].str.contains("blank", case=False, na=False)
-            df_marker["is_dapi"] = df_marker["marker_name"].str.match(r"Ch\d+Cy\d+", flags=re.IGNORECASE)
+            df_marker["is_blank"] = df_marker["marker_name"].str.contains(
+                "blank", case=False, na=False
+            )
+            df_marker["is_dapi"] = df_marker["marker_name"].str.match(
+                r"Ch\d+Cy\d+", flags=re.IGNORECASE
+            )
             df_marker["is_marker"] = (~df_marker["is_blank"]) & (~df_marker["is_dapi"])
             df_marker["is_kept"] = ""
             # save to Excel with the run name as the sheet name
@@ -565,8 +612,12 @@ def export_marker_metadata_fusion(dir_region: str, dir_output: str):
             df_marker["marker_name"] = df_marker["marker"]
             df_marker["marker"] = run + "-" + df_marker["marker"]
             # add flag columns
-            df_marker["is_blank"] = df_marker["marker_name"].str.contains("blank", case=False, na=False)
-            df_marker["is_dapi"] = df_marker["marker_name"].str.contains("dapi", case=False, na=False)
+            df_marker["is_blank"] = df_marker["marker_name"].str.contains(
+                "blank", case=False, na=False
+            )
+            df_marker["is_dapi"] = df_marker["marker_name"].str.contains(
+                "dapi", case=False, na=False
+            )
             df_marker["is_marker"] = (~df_marker["is_blank"]) & (~df_marker["is_dapi"])
             df_marker["is_kept"] = ""
             # save to Excel with the run name as the sheet name

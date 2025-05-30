@@ -282,9 +282,7 @@ def extract_cell_features(
           scaled by cell size.
     """
     marker_name = [marker for marker in marker_dict.keys()]
-    marker_array = np.stack(
-        [marker_dict[marker] for marker in marker_name], axis=2
-    )
+    marker_array = np.stack([marker_dict[marker] for marker in marker_name], axis=2)
 
     # extract properties
     props = skimage.measure.regionprops_table(
@@ -302,9 +300,7 @@ def extract_cell_features(
     avgs = np.zeros((n_cell, n_marker))
     for i, region in enumerate(stats):
         # Extract the pixel values for the current region from the marker_array
-        label_counts = [
-            marker_array[coord[0], coord[1], :] for coord in region.coords
-        ]
+        label_counts = [marker_array[coord[0], coord[1], :] for coord in region.coords]
         sums[i] = np.sum(label_counts, axis=0)  # Sum of marker intensities
         avgs[i] = sums[i] / region.area  # Average intensity per unit area
 
@@ -461,8 +457,7 @@ def run_segmentation_mesmer_cell(
             boundary_channel * np.iinfo(min_type).max
         )
         segmentation_markers_dict = {
-            marker: image.astype(min_type)
-            for marker, image in marker_dict.items()
+            marker: image.astype(min_type) for marker, image in marker_dict.items()
         }
     segmentation_markers_f = segmentation_dir / "segmentation_markers.ome.tiff"
     if segmentation_markers_f.exists():

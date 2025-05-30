@@ -1,10 +1,8 @@
 import numpy as np
 import pandas as pd
-
 import skimage.measure
 from deepcell.applications import Mesmer
 from deepcell.utils.plot_utils import create_rgb_image, make_outline_overlay
-
 
 ########################################################################################################################
 # subset
@@ -123,9 +121,7 @@ def segmentation_mesmer(
         compartment=compartment,
     )
     rgb_image = create_rgb_image(seg_stack, channel_colors=["blue", "green"])
-    overlay = make_outline_overlay(
-        rgb_data=rgb_image, predictions=segmentation_mask
-    )
+    overlay = make_outline_overlay(rgb_data=rgb_image, predictions=segmentation_mask)
     segmentation_mask = segmentation_mask[0, ..., 0]
     rgb_image = rgb_image[0, ...]
     overlay = overlay[0, ...]
@@ -146,9 +142,7 @@ def extract_cell_features(
         Tuple: DataFrames containing single cell data and size-scaled data.
     """
     marker_name = [marker for marker in marker_dict.keys()]
-    marker_array = np.stack(
-        [marker_dict[marker] for marker in marker_name], axis=2
-    )
+    marker_array = np.stack([marker_dict[marker] for marker in marker_name], axis=2)
 
     # extract properties
     props = skimage.measure.regionprops_table(
@@ -166,9 +160,7 @@ def extract_cell_features(
     avgs = np.zeros((n_cell, n_marker))
     for i, region in enumerate(stats):
         # Extract the pixel values for the current region from the marker_array
-        label_counts = [
-            marker_array[coord[0], coord[1], :] for coord in region.coords
-        ]
+        label_counts = [marker_array[coord[0], coord[1], :] for coord in region.coords]
         sums[i] = np.sum(label_counts, axis=0)  # Sum of marker intensities
         avgs[i] = sums[i] / region.area  # Average intensity per unit area
 

@@ -53,7 +53,9 @@ def parse_crop_data(crop_data_path):
     return centroids, areas, perimeters, names
 
 
-def calculate_rectangle(centroid_x, centroid_y, area, perimeter, name, pixel_width, pixel_height):
+def calculate_rectangle(
+    centroid_x, centroid_y, area, perimeter, name, pixel_width, pixel_height
+):
     """
     Calculate the bounding box coordinates of a rectangle based on centroid, area, and perimeter.
 
@@ -100,7 +102,9 @@ def calculate_rectangle(centroid_x, centroid_y, area, perimeter, name, pixel_wid
     return int(x1), int(y1), int(x2), int(y2)
 
 
-def crop_and_display(image, centroids, areas, perimeters, names, pixel_width, pixel_height):
+def crop_and_display(
+    image, centroids, areas, perimeters, names, pixel_width, pixel_height
+):
     """
     Crop and display regions from an image based on centroid, area, and perimeter data.
 
@@ -126,14 +130,16 @@ def crop_and_display(image, centroids, areas, perimeters, names, pixel_width, pi
         name = names[i]
 
         # Calculate bounding box coordinates
-        x1, y1, x2, y2 = calculate_rectangle(centroid_x, centroid_y, area, perimeter, name, pixel_width, pixel_height)
+        x1, y1, x2, y2 = calculate_rectangle(
+            centroid_x, centroid_y, area, perimeter, name, pixel_width, pixel_height
+        )
         rectangles.append((x1, y1, x2, y2))
 
         # Crop the image using calculated bounding box and display
         cropped_img = image[0, y1:y2, x1:x2]
 
         plt.imshow(np.log1p(cropped_img), cmap="gray")
-        plt.title(f"reg{i+1:03}")
+        plt.title(f"reg{i + 1:03}")
         plt.show()
 
     return rectangles
@@ -144,7 +150,9 @@ def crop_and_display(image, centroids, areas, perimeters, names, pixel_width, pi
 ########################################################################################################################
 
 
-def crop_image_into_blocks(shape: tuple[int, int], max_block_size: int = 3000) -> dict[str, np.ndarray]:
+def crop_image_into_blocks(
+    shape: tuple[int, int], max_block_size: int = 3000
+) -> dict[str, np.ndarray]:
     """
     Divide a large image into equal-sized blocks with dimensions <= max_block_size.
 
@@ -183,7 +191,9 @@ def crop_image_into_blocks(shape: tuple[int, int], max_block_size: int = 3000) -
     return xy_limits
 
 
-def plot_block_labels(image: np.ndarray, xy_limits: dict[str, tuple[int, int, int, int]]) -> plt.Figure:
+def plot_block_labels(
+    image: np.ndarray, xy_limits: dict[str, tuple[int, int, int, int]]
+) -> plt.Figure:
     """
     Plot the given image with bounding boxes and labels inside each block.
 
@@ -203,7 +213,12 @@ def plot_block_labels(image: np.ndarray, xy_limits: dict[str, tuple[int, int, in
     for label, (x_beg, x_end, y_beg, y_end) in xy_limits.items():
         # Draw a rectangle (bounding box)
         rect = plt.Rectangle(
-            (x_beg, y_beg), x_end - x_beg, y_end - y_beg, linewidth=2, edgecolor="red", facecolor="none"
+            (x_beg, y_beg),
+            x_end - x_beg,
+            y_end - y_beg,
+            linewidth=2,
+            edgecolor="red",
+            facecolor="none",
         )
         ax.add_patch(rect)
 
