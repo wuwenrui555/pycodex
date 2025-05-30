@@ -12,42 +12,13 @@ import skimage.measure
 import tifffile
 from deepcell.applications import Mesmer
 from pyqupath.tiff import PyramidWriter, TiffZarrReader
+from skimage.exposure import rescale_intensity
 
 from pycodex.io import setup_logging
 
 ###############################################################################
 # segmentation
 ###############################################################################
-
-
-def scale_to_0_1(
-    x: np.ndarray,
-    constant_value: float = 0,
-) -> np.ndarray:
-    """
-    Scale values in an array to the range [0, 1].
-
-    Parameters
-    ----------
-    x : np.ndarray
-        Values to be scaled.
-    constant_value : float, optional, default=0.0
-        Value to return when all elements in `x` are equal (min == max).
-
-    Returns
-    -------
-    np.ndarray
-        Scaled values in the range [0, 1], or an array with the specified
-        `constant_value` if all elements in `x` are the same.
-    """
-    min_val = np.min(x)
-    max_val = np.max(x)
-
-    # Handle the edge case where all values are the same
-    if min_val == max_val:
-        return np.full_like(x, fill_value=constant_value, dtype=float)
-
-    return (x - min_val) / (max_val - min_val)
 
 
 def preprocess_marker(
@@ -93,7 +64,7 @@ def preprocess_marker(
             image.astype(min_type), 0, 1, cv.THRESH_BINARY + cv.THRESH_OTSU
         )
     if scale:
-        image = scale_to_0_1(image)
+        image = rescale_intensity(image, out_range=(0, 1))
     return image if not thresh_otsu else image * mask_otsu
 
 
@@ -232,6 +203,7 @@ def segmentation_mesmer(
         thresh_otsu=thresh_otsu,
         scale=scale,
     )
+    internal_channel = rescale_intensity(internal_channel, out_range=(0, 1))
     boundary_channel, boundary_dict = construct_channel(
         marker_list=boundary_markers,
         marker_dict=marker_dict,
@@ -240,6 +212,7 @@ def segmentation_mesmer(
         thresh_otsu=thresh_otsu,
         scale=scale,
     )
+    boundary_channel = rescale_intensity(boundary_channel, out_range=(0, 1))
     image_stack = np.stack((internal_channel, boundary_channel), axis=-1)
     image_stack = np.expand_dims(image_stack, 0)
 
