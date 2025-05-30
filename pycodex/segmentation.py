@@ -1,7 +1,7 @@
 # %%
 import json
 import logging
-import os
+import re
 import time
 from pathlib import Path
 
@@ -11,10 +11,9 @@ import pandas as pd
 import skimage.measure
 import tifffile
 from deepcell.applications import Mesmer
-from pyqupath.geojson import mask_to_geojson_joblib
-from pyqupath.ometiff import export_ometiff_pyramid_from_dict, load_tiff_to_dict
+from pyqupath.tiff import PyramidWriter, TiffZarrReader
 
-from pycodex.io import setup_gpu, setup_logging
+from pycodex.io import setup_logging
 
 ###############################################################################
 # segmentation
@@ -324,6 +323,7 @@ def run_segmentation_mesmer_cell(
     interior_threshold: float = 0.20,
     tag: str = None,
     ometiff_path: str = None,
+    num_threads: int = 8,
 ):
     """
     Run whole-cell segmentation using Mesmer.
@@ -367,6 +367,8 @@ def run_segmentation_mesmer_cell(
     ometiff_path : str, optional
         Path to the OME-TIFF file containing the marker images for segmentation.
         Defaults to None, using the only OME-TIFF file in `unit_dir`.
+    num_threads : int, optional
+        The number of threads to use for writing the OME-TIFF file. Defaults to 8.
     """
     # Set up directories
     unit_dir = Path(unit_dir)
@@ -380,7 +382,8 @@ def run_segmentation_mesmer_cell(
 
     # Load OME-TIFF file
     if ometiff_path is None:
-        ometiff_paths = list(unit_dir.glob("*.ome.tiff"))
+        pattern = re.compile(r".*\.ome\.tif[f]?", re.IGNORECASE)
+        ometiff_paths = [f for f in unit_dir.glob("*") if pattern.match(f.name)]
         if len(ometiff_paths) == 0:
             logging.error("No OME-TIFF file found in the directory.")
             raise FileNotFoundError("No OME-TIFF file found in the directory.")
@@ -389,11 +392,12 @@ def run_segmentation_mesmer_cell(
             raise ValueError("Multiple OME-TIFF files found in the directory.")
         else:
             ometiff_path = ometiff_paths[0]
-            marker_dict = load_tiff_to_dict(ometiff_path, filetype="ome.tiff")
+            tiff_reader = TiffZarrReader.from_ometiff(ometiff_path)
+            marker_dict = tiff_reader.zimg_dict
             logging.info(f"OME-TIFF file loaded: {ometiff_path}.")
 
     # Check whether selected markers are present in the OME-TIFF file
-    markers = list(marker_dict.keys())
+    markers = tiff_reader.channel_names
     missing_markers = [
         marker
         for marker in boundary_markers + internal_markers
@@ -430,8 +434,6 @@ def run_segmentation_mesmer_cell(
         boundary_dict,
     ) = segmentation_mesmer(marker_dict=marker_dict, **params)
     segmentation_mask = segmentation_mask[0, :, :, 0]
-    min_type = np.min_scalar_type(np.max(segmentation_mask).astype(np.int_))
-    segmentation_mask = segmentation_mask.astype(min_type)
     segmentation_mask_f = segmentation_dir / "segmentation_mask.tiff"
     tifffile.imwrite(str(segmentation_mask_f), segmentation_mask)
     logging.info("Segmentation completed.")
@@ -440,8 +442,7 @@ def run_segmentation_mesmer_cell(
     segmentation_markers_dict = {}
     segmentation_markers_dict.update(internal_dict)
     segmentation_markers_dict.update(boundary_dict)
-    vmax = np.max([np.max(img) for img in marker_dict.values()])
-    min_type = np.min_scalar_type(vmax.astype(np.int_))
+    min_type = np.max([img.dtype for img in marker_dict.values()])
     if scale:
         segmentation_markers_dict["internal_sum"] = internal_channel
         segmentation_markers_dict["boundary_sum"] = boundary_channel
@@ -460,10 +461,9 @@ def run_segmentation_mesmer_cell(
             marker: image.astype(min_type) for marker, image in marker_dict.items()
         }
     segmentation_markers_f = segmentation_dir / "segmentation_markers.ome.tiff"
-    if segmentation_markers_f.exists():
-        os.remove(segmentation_markers_f)
-    export_ometiff_pyramid_from_dict(
-        segmentation_markers_dict, str(segmentation_markers_f)
+    tiff_writer = PyramidWriter.from_dict(segmentation_markers_dict)
+    tiff_writer.export_ometiff_pyramid(
+        segmentation_markers_f, overwrite=True, num_threads=num_threads
     )
     logging.info("Markers used for segmentation saved as OME-TIFF.")
 
@@ -472,89 +472,3 @@ def run_segmentation_mesmer_cell(
     data.to_csv(segmentation_dir / "data.csv")
     data_scale.to_csv(segmentation_dir / "dataScaleSize.csv")
     logging.info("Single-cell features extracted.")
-
-
-def generate_segmentation_mask_geojson(
-    unit_dir: str,
-    tag: str,
-    n_jobs: int = 10,
-    batch_size: int = 10,
-):
-    """
-    Generate GeoJSON file for segmentation mask.
-
-    Parameters
-    ----------
-    unit_dir : str
-        Directory to load and save data for segmentation.
-    tag : str
-        Tag for the segmentation directory, where the segmentation mask will
-        be used to generate the GeoJSON file.
-    n_jobs : int, optional
-        The number of parallel workers (CPU cores or threads) are spawned to
-        process the tasks. Default is 10.
-    batch_size : int, optional
-        The number of labels to process in each batch. Default is 10.
-    """
-    unit_dir = Path(unit_dir)
-    segmentation_dir = unit_dir / tag
-    segmentation_mask_f = segmentation_dir / "segmentation_mask.tiff"
-    segmentation_mask = tifffile.imread(segmentation_mask_f)
-    mask_to_geojson_joblib(
-        segmentation_mask,
-        segmentation_dir / "segmentation_mask.geojson",
-        n_jobs=n_jobs,
-        batch_size=batch_size,
-    )
-
-
-# %%
-if __name__ == "__main__":
-    setup_gpu("1")
-
-    unit_dir = Path(__file__).parent.parent / "test"
-    internal_markers = ["DAPI"]
-    boundary_markers = ["CD45", "CD3e", "CD163", "NaKATP"]
-    thresh_q_min = 0
-    thresh_q_max = 0.99
-    scale = True
-    pixel_size_um = 0.5068164319979996
-    maxima_threshold = 0.075
-    interior_threshold = 0.20
-    ometiff_path = None
-
-    thresh_otsu = True
-    tag = f"otsu={thresh_otsu}"
-    run_segmentation_mesmer_cell(
-        unit_dir=unit_dir,
-        internal_markers=internal_markers,
-        boundary_markers=boundary_markers,
-        thresh_q_min=thresh_q_min,
-        thresh_q_max=thresh_q_max,
-        thresh_otsu=thresh_otsu,
-        scale=scale,
-        pixel_size_um=pixel_size_um,
-        maxima_threshold=maxima_threshold,
-        interior_threshold=interior_threshold,
-        tag=tag,
-        ometiff_path=ometiff_path,
-    )
-    generate_segmentation_mask_geojson(unit_dir, tag)
-
-    thresh_otsu = False
-    tag = f"otsu={thresh_otsu}"
-    run_segmentation_mesmer_cell(
-        unit_dir=unit_dir,
-        internal_markers=internal_markers,
-        boundary_markers=boundary_markers,
-        thresh_q_min=thresh_q_min,
-        thresh_q_max=thresh_q_max,
-        thresh_otsu=False,
-        scale=scale,
-        pixel_size_um=pixel_size_um,
-        maxima_threshold=maxima_threshold,
-        interior_threshold=interior_threshold,
-        tag="otsu=False",
-        ometiff_path=ometiff_path,
-    )
-    generate_segmentation_mask_geojson(unit_dir, tag)
