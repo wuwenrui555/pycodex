@@ -10,7 +10,8 @@ readme = "README.md"
 requires-python = ">=3.9, <3.11"
 dependencies = [
     "deepcell (<=0.12.6)",
-    "tqdm-joblib (>=0.0.4,<0.0.5)"
+    "tqdm-joblib (>=0.0.4,<0.0.5)",
+    "pyqupath @ git+https://github.com/wuwenrui555/pyqupath.git@v0.1.0",
 ]
 
 
