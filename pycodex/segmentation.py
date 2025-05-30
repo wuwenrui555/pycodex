@@ -75,9 +75,9 @@ def construct_channel(
     thresh_q_max: float = 1,
     thresh_otsu: bool = False,
     scale: bool = True,
-) -> np.ndarray:
+) -> tuple[np.ndarray, dict[str, np.ndarray]]:
     """
-    Construct a channel by images of specified markers.
+    Construct a single channel by combining single or multiple channels.
 
     Parameters
     ----------
@@ -100,8 +100,9 @@ def construct_channel(
 
     Returns
     -------
-    np.ndarray
-        Mean of the images of the specified markers after preprocessing.
+    tuple[np.ndarray, dict[str : np.ndarray]]
+        - Single channel image after preprocessing.
+        - Dictionary of preprocessed images for each channel in `marker_list`.
     """
 
     # Check if any marker has constant value
@@ -141,7 +142,9 @@ def segmentation_mesmer(
     maxima_threshold: float = 0.075,
     interior_threshold: float = 0.20,
     compartment="whole-cell",
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[
+    np.ndarray, np.ndarray, np.ndarray, dict[str, np.ndarray], dict[str, np.ndarray]
+]:
     """
     Perform segmentation (Mesmer) on a given image.
 
@@ -185,8 +188,11 @@ def segmentation_mesmer(
 
     Returns
     -------
-    tuple[np.ndarray, np.ndarray, np.ndarray]
-        Segmentation mask, boundary channel, and internal channel.
+    tuple[np.ndarray, np.ndarray, np.ndarray, dict[str, np.ndarray], dict[str, np.ndarray]
+        - Segmentation mask.
+        - Single internal channel image.
+        - Single boundary channel image.
+        -
     """
     # Data for Mesmer
     internal_channel, internal_dict = construct_channel(
@@ -321,7 +327,7 @@ def run_segmentation_mesmer_cell(
         and `boundary_markers`. Values below the OTSU threshold will be set to 0.
     scale : bool, optional
         Whether to scale each marker in `internal_markers` and `boundary_markers`
-        before summing.
+        before constructing into a single channel.
     pixel_size_um : float
         Pixel size in micrometers for marker images.
         Note:
