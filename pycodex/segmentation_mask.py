@@ -1,4 +1,5 @@
 import numpy as np
+from deepcell.utils.plot_utils import create_rgb_image
 from matplotlib.axes import Axes
 from skimage.segmentation import find_boundaries
 
@@ -78,3 +79,50 @@ def plot_labels(
             va=va,
             bbox=bbox,
         )
+
+
+def create_rgb_segmentation_mask(
+    internal_channel: np.ndarray,
+    boundary_channel: np.ndarray,
+    internal_color: str = "blue",
+    boundary_color: str = "green",
+    outline: bool = False,
+    segmentation_mask: np.ndarray = None,
+) -> np.ndarray:
+    """
+    Create an RGB image from internal and boundary channels.
+
+    Parameters
+    ----------
+    internal_channel : np.ndarray
+        2D array representing the internal channel.
+    boundary_channel : np.ndarray
+        2D array representing the boundary channel.
+    internal_color : str, optional
+        Color for the internal channel, by default "blue".
+    boundary_color : str, optional
+        Color for the boundary channel, by default "green".
+    outline : bool, optional
+        If True, outlines the segmentation mask in white, by default False.
+    segmentation_mask : np.ndarray, optional
+        2D array representing the segmentation mask, required if outline is True.
+
+    Returns
+    -------
+    np.ndarray
+        RGB image of internal, boundary channels and outline.
+    """
+    image_stack = np.stack((internal_channel, boundary_channel), axis=-1)
+    image_stack = np.expand_dims(image_stack, 0)
+    rgb_image = create_rgb_image(
+        image_stack, channel_colors=[internal_color, boundary_color]
+    )
+    rgb_image = rgb_image[0]
+
+    if outline:
+        if segmentation_mask is None:
+            raise ValueError("Segmentation mask is None, cannot plot outline.")
+        segmentation_boundary = find_label_boundaries(segmentation_mask)
+        rgb_image[0, segmentation_boundary > 0] = 1
+
+    return rgb_image
