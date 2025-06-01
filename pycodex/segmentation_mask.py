@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import numpy as np
 from deepcell.utils.plot_utils import create_rgb_image
 from matplotlib.axes import Axes
@@ -8,7 +9,7 @@ TQDM_FORMAT = "{desc}: {percentage:3.0f}%|{bar:30}| {n_fmt}/{total_fmt} [{elapse
 
 def find_label_boundaries(
     segmentation_mask: np.ndarray,
-):
+) -> np.ndarray:
     """
     Convert a segmentation mask to a mask for boundaries.
 
@@ -34,13 +35,13 @@ def find_label_boundaries(
 
 def plot_labels(
     segmentation_mask: np.ndarray,
-    ax: Axes,
+    ax: Axes = None,
     color: str = "white",
     fontsize: int = 8,
     ha: str = "center",
     va: str = "center",
     bbox: dict = dict(facecolor="black", alpha=0.5, edgecolor="none"),
-):
+) -> Axes:
     """
     Plot labels from a segmentation mask.
 
@@ -49,7 +50,7 @@ def plot_labels(
     segmentation_mask : np.ndarray
         An array in which different regions are labeled with different integers.
     ax : matplotlib.axes.Axes
-        The axes on which to plot the labels.
+        The axes on which to plot the labels. If None, uses the current axes.
     color : str, optional
         Color of the text labels. Default is "white".
     fontsize : int, optional
@@ -61,7 +62,14 @@ def plot_labels(
     bbox : dict, optional
         A dictionary defining the bounding box properties for the text labels.
         Default is a semi-transparent black box with no edge color.
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+        The axes with the labels plotted.
     """
+    if ax is None:
+        ax = plt.gca()
 
     labels = np.unique(segmentation_mask)
     labels = labels[labels != 0]
@@ -79,6 +87,8 @@ def plot_labels(
             va=va,
             bbox=bbox,
         )
+
+    return ax
 
 
 def create_rgb_segmentation_mask(
