@@ -133,6 +133,6 @@ def create_rgb_segmentation_mask(
         if segmentation_mask is None:
             raise ValueError("Segmentation mask is None, cannot plot outline.")
         segmentation_boundary = find_label_boundaries(segmentation_mask)
-        rgb_image[0, segmentation_boundary > 0] = 1
+        rgb_image[segmentation_boundary > 0] = 1
 
     return rgb_image
