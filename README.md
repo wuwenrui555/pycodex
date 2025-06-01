@@ -17,4 +17,3 @@ pip install git+https://github.com/SizunJiangLab/pycodex.git
 ## TODO
 
 - auto TMA cropping
-- whole-cell segmentation - nuclear segmentation, and align cell labels
