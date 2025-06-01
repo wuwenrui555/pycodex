@@ -4,6 +4,7 @@ import logging
 import re
 import time
 from pathlib import Path
+from typing import Union
 
 import cv2 as cv
 import numpy as np
@@ -289,6 +290,109 @@ def extract_cell_features(
     return data, data_scale_size
 
 
+def _save_marker_dict_for_segmentation(
+    segmentation_dir: Union[Path, str],
+    internal_channel: np.ndarray,
+    boundary_channel: np.ndarray,
+    internal_dict: dict[str, np.ndarray],
+    boundary_dict: dict[str, np.ndarray],
+    scale: bool,
+    dtype: np.dtype,
+    num_threads: int,
+):
+    """
+    Create a dictionary containing preprocessed marker images for segmentation.
+
+    Parameters
+    ----------
+    segmentation_dir : Union[Path, str]
+        Directory to save the segmentation markers.
+    internal_channel : np.ndarray
+        Summed/combined internal marker image after preprocessing
+    boundary_channel : np.ndarray
+        Summed/combined boundary marker image after preprocessing
+    internal_dict : dict[str, np.ndarray]
+        Individual preprocessed internal marker images
+    boundary_dict : dict[str, np.ndarray]
+        Individual preprocessed boundary marker images
+    scale : bool
+        Whether the images were scaled during preprocessing
+    dtype : np.dtype
+        Output data type for marker images
+    num_threads : int
+        The number of threads to use for writing the OME-TIFF file.
+    """
+    segmentation_markers_dict = {}
+    segmentation_markers_dict.update(internal_dict)
+    segmentation_markers_dict.update(boundary_dict)
+    if scale:
+        segmentation_markers_dict["internal_sum"] = internal_channel
+        segmentation_markers_dict["boundary_sum"] = boundary_channel
+        segmentation_markers_dict = {
+            marker: (image * np.iinfo(dtype).max).astype(dtype)
+            for marker, image in segmentation_markers_dict.items()
+        }
+    else:
+        segmentation_markers_dict["internal_sum"] = (
+            internal_channel * np.iinfo(dtype).max
+        )
+        segmentation_markers_dict["boundary_sum"] = (
+            boundary_channel * np.iinfo(dtype).max
+        )
+        segmentation_markers_dict = {
+            marker: image.astype(dtype)
+            for marker, image in segmentation_markers_dict.items()
+        }
+
+    segmentation_markers_f = segmentation_dir / "segmentation_markers.ome.tiff"
+    tiff_writer = PyramidWriter.from_dict(segmentation_markers_dict)
+    tiff_writer.export_ometiff_pyramid(
+        segmentation_markers_f, overwrite=True, num_threads=num_threads
+    )
+
+
+def _get_marker_dict(
+    unit_dir: Union[Path, str],
+    ometiff_path: Union[Path, str, None] = None,
+) -> dict[str, np.ndarray]:
+    """
+    Get marker dictionary from OME-TIFF file in the specified directory.
+    If `ometiff_path` is not provided, it will search for the only OME-TIFF file
+    in the `unit_dir`.
+
+    Parameters
+    ----------
+    unit_dir : Union[Path, str]
+        Directory to search for the OME-TIFF file.
+    ometiff_path : Union[Path, str, None], optional
+        Path to the OME-TIFF file. If None, it will search for the only
+        OME-TIFF file in `unit_dir`. Defaults to None.
+
+    Returns
+    -------
+    dict[str, np.ndarray]
+        Dictionary containing marker names as keys and corresponding images as
+        values.
+    """
+    if ometiff_path is None:
+        pattern = re.compile(r".*\.ome\.tif[f]?", re.IGNORECASE)
+        ometiff_paths = [f for f in unit_dir.glob("*") if pattern.match(f.name)]
+        if len(ometiff_paths) == 0:
+            logging.error("No OME-TIFF file found in the directory.")
+            raise FileNotFoundError("No OME-TIFF file found in the directory.")
+        elif len(ometiff_paths) > 1:
+            logging.error("Multiple OME-TIFF files found in the directory.")
+            raise ValueError("Multiple OME-TIFF files found in the directory.")
+        else:
+            ometiff_path = ometiff_paths[0]
+    else:
+        ometiff_path = Path(ometiff_path)
+    tiff_reader = TiffZarrReader.from_ometiff(ometiff_path)
+    marker_dict = tiff_reader.zimg_dict
+
+    return marker_dict
+
+
 def run_segmentation_mesmer_cell(
     unit_dir: str,
     internal_markers: list[str],
@@ -360,23 +464,11 @@ def run_segmentation_mesmer_cell(
     setup_logging(segmentation_dir / "segmentation.log")
 
     # Load OME-TIFF file
-    if ometiff_path is None:
-        pattern = re.compile(r".*\.ome\.tif[f]?", re.IGNORECASE)
-        ometiff_paths = [f for f in unit_dir.glob("*") if pattern.match(f.name)]
-        if len(ometiff_paths) == 0:
-            logging.error("No OME-TIFF file found in the directory.")
-            raise FileNotFoundError("No OME-TIFF file found in the directory.")
-        elif len(ometiff_paths) > 1:
-            logging.error("Multiple OME-TIFF files found in the directory.")
-            raise ValueError("Multiple OME-TIFF files found in the directory.")
-        else:
-            ometiff_path = ometiff_paths[0]
-            tiff_reader = TiffZarrReader.from_ometiff(ometiff_path)
-            marker_dict = tiff_reader.zimg_dict
-            logging.info(f"OME-TIFF file loaded: {ometiff_path}.")
+    marker_dict = _get_marker_dict(unit_dir=unit_dir, ometiff_path=ometiff_path)
+    logging.info(f"OME-TIFF file loaded: {ometiff_path}.")
 
     # Check whether selected markers are present in the OME-TIFF file
-    markers = tiff_reader.channel_names
+    markers = list(marker_dict.keys())
     missing_markers = [
         marker
         for marker in boundary_markers + internal_markers
@@ -418,31 +510,16 @@ def run_segmentation_mesmer_cell(
     logging.info("Segmentation completed.")
 
     # Save markers for segmentation, boundary and internal channels
-    segmentation_markers_dict = {}
-    segmentation_markers_dict.update(internal_dict)
-    segmentation_markers_dict.update(boundary_dict)
-    min_type = np.max([img.dtype for img in marker_dict.values()])
-    if scale:
-        segmentation_markers_dict["internal_sum"] = internal_channel
-        segmentation_markers_dict["boundary_sum"] = boundary_channel
-        segmentation_markers_dict = {
-            marker: (image * np.iinfo(min_type).max).astype(min_type)
-            for marker, image in segmentation_markers_dict.items()
-        }
-    else:
-        segmentation_markers_dict["internal_sum"] = (
-            internal_channel * np.iinfo(min_type).max
-        )
-        segmentation_markers_dict["boundary_sum"] = (
-            boundary_channel * np.iinfo(min_type).max
-        )
-        segmentation_markers_dict = {
-            marker: image.astype(min_type) for marker, image in marker_dict.items()
-        }
-    segmentation_markers_f = segmentation_dir / "segmentation_markers.ome.tiff"
-    tiff_writer = PyramidWriter.from_dict(segmentation_markers_dict)
-    tiff_writer.export_ometiff_pyramid(
-        segmentation_markers_f, overwrite=True, num_threads=num_threads
+    dtype = np.max([img.dtype for img in marker_dict.values()])
+    _save_marker_dict_for_segmentation(
+        segmentation_dir=segmentation_dir,
+        internal_channel=internal_channel,
+        boundary_channel=boundary_channel,
+        internal_dict=internal_dict,
+        boundary_dict=boundary_dict,
+        scale=scale,
+        dtype=dtype,
+        num_threads=num_threads,
     )
     logging.info("Markers used for segmentation saved as OME-TIFF.")
 
@@ -450,4 +527,168 @@ def run_segmentation_mesmer_cell(
     data, data_scale = extract_cell_features(marker_dict, segmentation_mask)
     data.to_csv(segmentation_dir / "data.csv")
     data_scale.to_csv(segmentation_dir / "dataScaleSize.csv")
+    logging.info("Single-cell features extracted.")
+
+
+def run_segmentation_mesmer_compartments(
+    unit_dir: str,
+    internal_markers: list[str],
+    boundary_markers: list[str],
+    thresh_q_min: float,
+    thresh_q_max: float,
+    thresh_otsu: bool,
+    scale: bool,
+    pixel_size_um: float,
+    maxima_threshold: float = 0.075,
+    interior_threshold: float = 0.20,
+    tag: str = None,
+    ometiff_path: str = None,
+    num_threads: int = 8,
+):
+    """
+    Run segmentation using Mesmer to separate cell compartments (cell, nuclear,
+    and membrane).
+
+    Parameters
+    ----------
+    unit_dir : str
+        Directory to load and save data for segmentation.
+    internal_markers : list
+        List of internal marker names.
+    boundary_markers : list
+        List of boundary marker names.
+    thresh_q_min : float, optional
+        Lower quantile to cut at for each marker in `internal_markers` and
+        `boundary_markers`. Values below this quantile will be set to 0.
+    thresh_q_max : float, optional
+        Upper quantile to cut at for each marker in `internal_markers` and
+        `boundary_markers`. Values above this quantile will be set to the
+        quantile value.
+    thresh_otsu: bool, optional
+        Whether to perform OTSU thresholding for each marker in `internal_markers`
+        and `boundary_markers`. Values below the OTSU threshold will be set to 0.
+    scale : bool, optional
+        Whether to scale each marker in `internal_markers` and `boundary_markers`
+        before constructing into a single channel.
+    pixel_size_um : float
+        Pixel size in micrometers for marker images.
+        Note:
+        - Fusion: 0.5068164319979996
+        - Keyence: 0.3775202
+    maxima_threshold : float, optional
+        Maxima threshold for Mesmer. Lower values will result in more separate
+        cells being predicted, whereas higher values will result in fewer cells.
+        Defaults to 0.075.
+    interior_threshold : float, optional
+        Interior threshold for Mesmer. Lower values will result in larger cells,
+        whereas higher values will result in smaller cells. Defaults to 0.20.
+    tag : str, optional
+        Tag for the segmentation directory. Defaults to None, using time as tag
+        (YYYYMMDD_HHMMSS).
+    ometiff_path : str, optional
+        Path to the OME-TIFF file containing the marker images for segmentation.
+        Defaults to None, using the only OME-TIFF file in `unit_dir`.
+    num_threads : int, optional
+        The number of threads to use for writing the OME-TIFF file. Defaults to 8.
+    """
+    # Set up directories
+    unit_dir = Path(unit_dir)
+    if tag is None:
+        tag = time.strftime("%Y%m%d_%H%M%S")
+    segmentation_dir = unit_dir / tag
+    segmentation_dir.mkdir(parents=True, exist_ok=True)
+
+    # Set up logging
+    setup_logging(segmentation_dir / "segmentation.log")
+
+    # Load OME-TIFF file
+    marker_dict = _get_marker_dict(unit_dir=unit_dir, ometiff_path=ometiff_path)
+    logging.info(f"OME-TIFF file loaded: {ometiff_path}.")
+
+    # Check whether selected markers are present in the OME-TIFF file
+    markers = list(marker_dict.keys())
+    missing_markers = [
+        marker
+        for marker in boundary_markers + internal_markers
+        if marker not in markers
+    ]
+    if len(missing_markers) > 0:
+        logging.error(f"Missing markers: {missing_markers}")
+        raise ValueError(f"Missing markers: {missing_markers}")
+
+    # Write parameters
+    params = {
+        "internal_markers": internal_markers,
+        "boundary_markers": boundary_markers,
+        "thresh_q_min": thresh_q_min,
+        "thresh_q_max": thresh_q_max,
+        "thresh_otsu": thresh_otsu,
+        "scale": scale,
+        "pixel_size_um": pixel_size_um,
+        "maxima_threshold": maxima_threshold,
+        "interior_threshold": interior_threshold,
+        "compartment": "both",
+    }
+    with open(
+        f"{segmentation_dir}/parameter_segmentation.json", "w", encoding="utf-8"
+    ) as file:
+        json.dump(params, file, indent=4, ensure_ascii=False)
+
+    # Segmentation
+    (
+        segmentation_mask,
+        internal_channel,
+        boundary_channel,
+        internal_dict,
+        boundary_dict,
+    ) = segmentation_mesmer(marker_dict=marker_dict, **params)
+    segmentation_mask_cell = segmentation_mask[0, :, :, 0]
+    segmentation_mask_nuclear = segmentation_mask[0, :, :, 1]
+    segmentation_mask_nuclear = (
+        segmentation_mask_nuclear.astype(bool) * segmentation_mask_cell
+    )
+    segmentation_mask_membrane = segmentation_mask_cell - segmentation_mask_nuclear
+    tifffile.imwrite(
+        str(segmentation_dir / "segmentation_mask_cell.tiff"), segmentation_mask_cell
+    )
+    tifffile.imwrite(
+        str(segmentation_dir / "segmentation_mask_nuclear.tiff"),
+        segmentation_mask_nuclear,
+    )
+    tifffile.imwrite(
+        str(segmentation_dir / "segmentation_mask_membrane.tiff"),
+        segmentation_mask_membrane,
+    )
+    logging.info("Segmentation completed.")
+
+    # Save markers for segmentation, boundary and internal channels
+    dtype = np.max([img.dtype for img in marker_dict.values()])
+    _save_marker_dict_for_segmentation(
+        segmentation_dir=segmentation_dir,
+        internal_channel=internal_channel,
+        boundary_channel=boundary_channel,
+        internal_dict=internal_dict,
+        boundary_dict=boundary_dict,
+        scale=scale,
+        dtype=dtype,
+        num_threads=num_threads,
+    )
+    logging.info("Markers used for segmentation saved as OME-TIFF.")
+
+    # Extract single-cell features
+    data_cell, data_cell_scale = extract_cell_features(
+        marker_dict, segmentation_mask_cell
+    )
+    data_nuclear, data_nuclear_scale = extract_cell_features(
+        marker_dict, segmentation_mask_nuclear
+    )
+    data_membrane, data_membrane_scale = extract_cell_features(
+        marker_dict, segmentation_mask_membrane
+    )
+    data_cell.to_csv(segmentation_dir / "cell_data.csv")
+    data_cell_scale.to_csv(segmentation_dir / "cell_dataScaleSize.csv")
+    data_nuclear.to_csv(segmentation_dir / "nuclear_data.csv")
+    data_nuclear_scale.to_csv(segmentation_dir / "nuclear_dataScaleSize.csv")
+    data_membrane.to_csv(segmentation_dir / "membrane_data.csv")
+    data_membrane_scale.to_csv(segmentation_dir / "membrane_dataScaleSize.csv")
     logging.info("Single-cell features extracted.")
