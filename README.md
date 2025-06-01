@@ -12,3 +12,4 @@ pip install git+https://github.com/SizunJiangLab/pycodex.git
 
 - [segmentation](./notebooks/segmentation.ipynb)
 - [segmentation_mask](./notebooks/segmentation_mask.ipynb)
+- [annotation](./notebooks/annotation.ipynb)
