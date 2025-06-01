@@ -27,9 +27,15 @@ def summary_markers(
     all_markers = combined_metadata_df["marker"].unique()
 
     # Identify and filter out blank markers
-    blank_markers = [marker for marker in all_markers if re.match(r"blank", marker, re.IGNORECASE)]
-    metadata_df = combined_metadata_df.loc[~combined_metadata_df["marker"].isin(blank_markers)]
-    count_pivot = metadata_df.pivot_table(index="marker", columns="region", aggfunc="size", fill_value=0)
+    blank_markers = [
+        marker for marker in all_markers if re.match(r"blank", marker, re.IGNORECASE)
+    ]
+    metadata_df = combined_metadata_df.loc[
+        ~combined_metadata_df["marker"].isin(blank_markers)
+    ]
+    count_pivot = metadata_df.pivot_table(
+        index="marker", columns="region", aggfunc="size", fill_value=0
+    )
 
     # Identify markers that are missing in some regions
     missing_markers_n = (count_pivot == 0).sum(axis=1)
@@ -43,7 +49,9 @@ def summary_markers(
 
     # Identify unique markers (not blank, not duplicated, and not missing in any region)
     unique_markers = [
-        marker for marker in all_markers if marker not in (blank_markers + duplicated_markers + missing_markers)
+        marker
+        for marker in all_markers
+        if marker not in (blank_markers + duplicated_markers + missing_markers)
     ]
     unique_markers = sorted(unique_markers)
 
@@ -64,11 +72,13 @@ def summary_markers(
 ########################################################################################################################
 
 
-def organize_marker_dict(metadata_dict: dict[str, pd.DataFrame], region: str, marker_list: list[str]):
+def organize_marker_dict(
+    metadata_dict: dict[str, pd.DataFrame], region: str, marker_list: list[str]
+):
     """
     Organize marker dictionary for a specific region.
 
-     Args:
+    Args:
         metadata_dict (dict): Dictionary containing region names as keys and metadata DataFrames as values.
         region (str): Name of the region to extract markers for.
         marker_list (list): List of marker names to organize.
@@ -103,7 +113,11 @@ def display_pixel_size(metadata_dict: dict[str, pd.DataFrame], n: int = 1) -> No
     """
     from pycodex.utils import get_tiff_size
 
-    path_list = [path for metadata_df in metadata_dict.values() for path in metadata_df.iloc[:n]["path"]]
+    path_list = [
+        path
+        for metadata_df in metadata_dict.values()
+        for path in metadata_df.iloc[:n]["path"]
+    ]
     size_df = []
     for path in tqdm(path_list):
         size_df.append(get_tiff_size(path))

@@ -1,3 +1,20 @@
-[tool.ruff]
-# Allow lines to be as long as 120.
-line-length = 80
+[project]
+name = "pycodex"
+version = "0.1.9"
+description = "Co-detection by indexing (CODEX) analysis using Python"
+authors = [
+    {name = "wuwenrui555",email = "wuwenruiwwr@outlook.com"}
+]
+license = {text = "GPLv3"}
+readme = "README.md"
+requires-python = ">=3.9, <3.11"
+dependencies = [
+    "deepcell (<=0.12.6)",
+    "tqdm-joblib (>=0.0.4,<0.0.5)",
+    "pyqupath @ git+https://github.com/wuwenrui555/pyqupath.git@v0.1.0",
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

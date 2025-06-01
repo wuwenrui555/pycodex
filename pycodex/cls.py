@@ -69,9 +69,7 @@ class MarkerMetadata:
                 self.marker_dir, subfolders, extensions
             )
         else:
-            raise ValueError(
-                "Invalid platform. Options are 'keyence' or 'fusion'."
-            )
+            raise ValueError("Invalid platform. Options are 'keyence' or 'fusion'.")
 
     def summary_metadata(self):
         """
@@ -98,9 +96,9 @@ class MarkerMetadata:
             List of markers to organize.
         """
         df_metadata = self.metadata[region]
-        df_metadata = df_metadata[
-            df_metadata["marker"].isin(marker_list)
-        ].reset_index(drop=True)
+        df_metadata = df_metadata[df_metadata["marker"].isin(marker_list)].reset_index(
+            drop=True
+        )
 
         marker_dict = {
             row["marker"]: tifffile.imread(row["path"])

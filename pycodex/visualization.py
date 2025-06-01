@@ -209,9 +209,7 @@ def plot_scale_marker_sum_segmentation(
         marker_im_out = marker_im.copy()
         marker_im_out[segmentation_mask != 0] = 0
 
-        argb_overlay = np.zeros(
-            (overlay.shape[0], overlay.shape[1], 4), dtype=np.uint8
-        )
+        argb_overlay = np.zeros((overlay.shape[0], overlay.shape[1], 4), dtype=np.uint8)
         argb_overlay[:, :, 0:3] = 255  # All white in RGB channels
         argb_overlay[:, :, 3] = np.where(
             overlay[:, :, 0] == 1, 255, 0

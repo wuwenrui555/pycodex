@@ -40,14 +40,8 @@ def get_tiff_size(tiff_path: str) -> dict[str, float]:
             raise ValueError("Unsupported resolution unit")
 
         # Get resolution values
-        x_res = (
-            page.tags["XResolution"].value[0]
-            / page.tags["XResolution"].value[1]
-        )
-        y_res = (
-            page.tags["YResolution"].value[0]
-            / page.tags["YResolution"].value[1]
-        )
+        x_res = page.tags["XResolution"].value[0] / page.tags["XResolution"].value[1]
+        y_res = page.tags["YResolution"].value[0] / page.tags["YResolution"].value[1]
 
         # Calculate size
         width_px = page.imagewidth
@@ -167,17 +161,15 @@ def segmentation_mesmer(
 
         try:
             # segmentation
-            segmentation_mask, rgb_image, overlay = (
-                markerim.segmentation_mesmer(
-                    boundary_markers=boundary_markers,
-                    internal_markers=internal_markers,
-                    marker_dict=marker_dict,
-                    pixel_size_um=pixel_size_um,
-                    scale=scale,
-                    maxima_threshold=maxima_threshold,
-                    interior_threshold=interior_threshold,
-                    compartment=compartment,
-                )
+            segmentation_mask, rgb_image, overlay = markerim.segmentation_mesmer(
+                boundary_markers=boundary_markers,
+                internal_markers=internal_markers,
+                marker_dict=marker_dict,
+                pixel_size_um=pixel_size_um,
+                scale=scale,
+                maxima_threshold=maxima_threshold,
+                interior_threshold=interior_threshold,
+                compartment=compartment,
             )
 
             # save segmentation mask
@@ -187,12 +179,8 @@ def segmentation_mesmer(
                 os.path.join(output_subdir, "segmentation_mask.tiff"),
                 segmentation_mask.astype(np.uint32),
             )
-            tifffile.imwrite(
-                os.path.join(output_subdir, "rgb_image.tiff"), rgb_image
-            )
-            tifffile.imwrite(
-                os.path.join(output_subdir, "overlay.tiff"), overlay
-            )
+            tifffile.imwrite(os.path.join(output_subdir, "rgb_image.tiff"), rgb_image)
+            tifffile.imwrite(os.path.join(output_subdir, "overlay.tiff"), overlay)
             logging.info(f"{region}: Segmentation completed")
 
             # save single-cell features
@@ -200,9 +188,7 @@ def segmentation_mesmer(
                 marker_dict, segmentation_mask
             )
             data.to_csv(os.path.join(output_subdir, "data.csv"))
-            data_scale_size.to_csv(
-                os.path.join(output_subdir, "dataScaleSize.csv")
-            )
+            data_scale_size.to_csv(os.path.join(output_subdir, "dataScaleSize.csv"))
             logging.info(f"{region}: Single-cell features extraction completed")
 
         except Exception as e:
@@ -253,14 +239,10 @@ def crop_image_into_blocks(
             for file in marker_files
             if os.path.splitext(file)[1] in [".tiff", ".tif"]
         ]
-        marker_paths = [
-            os.path.join(marker_subdir, file) for file in marker_files
-        ]
+        marker_paths = [os.path.join(marker_subdir, file) for file in marker_files]
 
         segmentation_subdir = os.path.join(segmentation_dir, region)
-        segmentation_path = os.path.join(
-            segmentation_subdir, "segmentation_mask.tiff"
-        )
+        segmentation_path = os.path.join(segmentation_subdir, "segmentation_mask.tiff")
 
         all_paths = marker_paths + [segmentation_path]
 
@@ -304,9 +286,7 @@ def crop_image_into_blocks(
             xy_limits.items(), desc=f"Cropping {region}: "
         ):
             for marker, im in filtered_marker_dict.items():
-                output_subdir = os.path.join(
-                    output_dir, region, f"{region}_{label}"
-                )
+                output_subdir = os.path.join(output_dir, region, f"{region}_{label}")
                 os.makedirs(output_subdir, exist_ok=True)
                 output_path = os.path.join(output_subdir, f"{marker}.tiff")
                 dtype = im.dtype.type
