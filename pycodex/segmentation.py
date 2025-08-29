@@ -12,6 +12,7 @@ import pandas as pd
 import skimage.measure
 import tifffile
 from deepcell.applications import Mesmer
+from pyqupath.geojson import mask_to_geojson_joblib
 from pyqupath.tiff import PyramidWriter, TiffZarrReader
 from skimage.exposure import rescale_intensity
 
@@ -530,6 +531,41 @@ def run_segmentation_mesmer_cell(
     logging.info("Single-cell features extracted.")
 
 
+def generate_segmentation_mask_geojson_cell(
+    unit_dir: str,
+    tag: str,
+    n_jobs: int = 10,
+    batch_size: int = 10,
+):
+    """
+    Generate GeoJSON file for segmentation mask.
+
+    Parameters
+    ----------
+    unit_dir : str
+        Directory to load and save data for segmentation.
+    tag : str
+        Tag for the segmentation directory, where the segmentation mask will
+        be used to generate the GeoJSON file.
+    n_jobs : int, optional
+        The number of parallel workers (CPU cores or threads) are spawned to
+        process the tasks. Default is 10.
+    batch_size : int, optional
+        The number of labels to process in each batch. Default is 10.
+    """
+    unit_dir = Path(unit_dir)
+    segmentation_dir = unit_dir / tag
+
+    segmentation_mask_f = segmentation_dir / "segmentation_mask.tiff"
+    segmentation_mask = tifffile.imread(segmentation_mask_f)
+    mask_to_geojson_joblib(
+        segmentation_mask,
+        segmentation_dir / "segmentation_mask.geojson",
+        n_jobs=n_jobs,
+        batch_size=batch_size,
+    )
+
+
 def run_segmentation_mesmer_compartments(
     unit_dir: str,
     internal_markers: list[str],
@@ -692,3 +728,39 @@ def run_segmentation_mesmer_compartments(
     data_membrane.to_csv(segmentation_dir / "membrane_data.csv")
     data_membrane_scale.to_csv(segmentation_dir / "membrane_dataScaleSize.csv")
     logging.info("Single-cell features extracted.")
+
+
+def generate_segmentation_mask_geojson_compartments(
+    unit_dir: str,
+    tag: str,
+    n_jobs: int = 10,
+    batch_size: int = 10,
+):
+    """
+    Generate GeoJSON file for segmentation mask.
+
+    Parameters
+    ----------
+    unit_dir : str
+        Directory to load and save data for segmentation.
+    tag : str
+        Tag for the segmentation directory, where the segmentation mask will
+        be used to generate the GeoJSON file.
+    n_jobs : int, optional
+        The number of parallel workers (CPU cores or threads) are spawned to
+        process the tasks. Default is 10.
+    batch_size : int, optional
+        The number of labels to process in each batch. Default is 10.
+    """
+    unit_dir = Path(unit_dir)
+    segmentation_dir = unit_dir / tag
+
+    for component in ["cell", "membrane", "nuclear"]:
+        segmentation_mask_f = segmentation_dir / f"segmentation_mask_{component}.tiff"
+        segmentation_mask = tifffile.imread(segmentation_mask_f)
+        mask_to_geojson_joblib(
+            segmentation_mask,
+            segmentation_dir / f"segmentation_mask_{component}.geojson",
+            n_jobs=n_jobs,
+            batch_size=batch_size,
+        )

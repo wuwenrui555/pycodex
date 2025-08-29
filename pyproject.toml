@@ -1,6 +1,6 @@
 [project]
 name = "pycodex"
-version = "0.1.9"
+version = "0.1.10"
 description = "Co-detection by indexing (CODEX) analysis using Python"
 authors = [
     {name = "wuwenrui555",email = "wuwenruiwwr@outlook.com"}
