@@ -1,10 +1,10 @@
 # %%
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from deepcell.utils.plot_utils import create_rgb_image
 from matplotlib.axes import Axes
 from skimage.segmentation import find_boundaries
-from tqdm import tqdm
 
 TQDM_FORMAT = "{desc}: {percentage:3.0f}%|{bar:30}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]"
 
@@ -216,24 +216,33 @@ def create_rgb_annotation(
     np.ndarray
         RGB image of annotations and outline (if enabled).
     """
-    # Map label integers to RGB colors based on annotations
-    unique_labels = np.unique(segmentation_mask[segmentation_mask != 0])
-    color_mapping = np.zeros((np.max(unique_labels) + 1, 3), dtype=np.uint8)
-    for label in tqdm(
-        unique_labels, desc="Mapping labels to colors", bar_format=TQDM_FORMAT
-    ):
-        annotation = annotation_dict.get(label, None)
+    # Map annotations to colors
+    unique_annotations = list(set(annotation_dict.values()))
+    color_mapping = np.zeros((len(unique_annotations) + 1, 3), dtype=np.uint8)
+    annotation_mask = np.zeros_like(segmentation_mask, dtype=np.int32)
+
+    # Create Annotation mask
+    annotation_df = pd.DataFrame(
+        {"cell_label": annotation_dict.keys(), "annotation": annotation_dict.values()}
+    )
+    for i, annotation in enumerate(unique_annotations):
         color_hex = color_dict.get(annotation, None)
         if color_hex is not None:
             color_rgb = tuple(int(color_hex[i : i + 2], 16) for i in (1, 3, 5))
-            color_mapping[label] = color_rgb
+            color_mapping[i + 1] = color_rgb
+
+            cell_labels = annotation_df.loc[
+                annotation_df["annotation"] == annotation, "cell_label"
+            ].values
+            if len(cell_labels) > 0:
+                annotation_mask[np.isin(segmentation_mask, cell_labels)] = i + 1
 
     # Create and fill RGB image with colors
     rgb_image = np.zeros(
         (segmentation_mask.shape[0], segmentation_mask.shape[1], 3), dtype=np.uint8
     )
-    rgb_image = color_mapping[segmentation_mask]
-    rgb_image[segmentation_mask == 0] = background_color_rgb
+    rgb_image = color_mapping[annotation_mask]
+    rgb_image[annotation_mask == 0] = background_color_rgb
 
     # Add cell boundaries if outline option is enabled
     if boundary:
