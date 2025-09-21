@@ -6,6 +6,9 @@ Co-detection by indexing (CODEX) analysis using Python
 
 ```sh
 pip install git+https://github.com/SizunJiangLab/pycodex.git
+
+# development version
+pip install git+https://github.com/SizunJiangLab/pycodex.git@dev
 ```
 
 ## Tutorials
