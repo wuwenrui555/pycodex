@@ -10,10 +10,12 @@ pip install git+https://github.com/SizunJiangLab/pycodex.git
 
 ## Tutorials
 
+### Analysis
+
 - [segmentation](./notebooks/segmentation.ipynb)
-- [segmentation_mask](./notebooks/segmentation_mask.ipynb)
-- [annotation](./notebooks/annotation.ipynb)
 
-## TODO
+### Visualization
 
-- auto TMA cropping
+- [multiplex](./notebooks/multiplex.ipynb)
+- [segmentation mask](./notebooks/segmentation_mask.ipynb)
+- [phenotype map](./notebooks/annotation.ipynb)
