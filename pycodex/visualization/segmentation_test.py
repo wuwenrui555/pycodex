@@ -1,3 +1,4 @@
+# %%
 from typing import Optional
 
 import matplotlib.patches as patches
@@ -6,11 +7,10 @@ import numpy as np
 
 from pycodex.markerim import scale_marker_sum
 
+
 ################################################################################
 # segmentation test
 ################################################################################
-
-
 def plot_cropped_subregion(
     im: np.ndarray,
     x_min: int,
