@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 from deepcell.utils.plot_utils import create_rgb_image
 from matplotlib.axes import Axes
+from scipy.ndimage import binary_dilation
 from skimage.segmentation import find_boundaries
 
 TQDM_FORMAT = "{desc}: {percentage:3.0f}%|{bar:30}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]"
@@ -17,6 +18,7 @@ def find_segmentation_boundaries(
     mode: str = "inner",
     connectivity: int = 1,
     background: int = 0,
+    linewidth: int = 1,
 ) -> np.ndarray:
     """
     Convert a segmentation mask to a mask for boundaries.
@@ -33,6 +35,8 @@ def find_segmentation_boundaries(
     background : int, optional
         The value representing the background in the segmentation mask. Default
         is 0.
+    linewidth : int, optional
+        The thickness of the boundary lines. Default is 1 (pixel).
 
     Returns
     -------
@@ -47,6 +51,10 @@ def find_segmentation_boundaries(
         connectivity=connectivity,
         background=background,
     )
+
+    if linewidth > 1:
+        boundaries = binary_dilation(boundaries, iterations=linewidth - 1)
+
     segmentation_boundary = segmentation_mask * boundaries
 
     return segmentation_boundary
@@ -154,27 +162,48 @@ def create_rgb_with_segmentation_boundaries(
     img_rgb: np.ndarray,
     segmentation_mask: np.ndarray,
     boundary_color_rgb: tuple[int, int, int] = (0, 255, 255),
+    mode: str = "inner",
+    connectivity: int = 1,
+    background: int = 0,
+    linewidth: int = 1,
 ) -> np.ndarray:
     """
     Create an RGB image with segmentation boundaries overlaid.
 
     Parameters
     ----------
-    image : np.ndarray
-        2D array representing the grayscale image.
+    img_rgb : np.ndarray
+        RGB image as a 3D array (height, width, 3).
     segmentation_mask : np.ndarray
         2D array representing the segmentation mask.
-    outline_color : str, optional
-        Color for the segmentation boundaries, by default "white".
-    outline : bool, optional
-        If True, outlines the segmentation mask in the specified color, by default True.
+    boundary_color_rgb : tuple[int, int, int], optional
+        RGB color for the boundaries, by default (0, 255, 255) (cyan).
+    mode : str, optional
+        The mode of boundary detection. Options are 'inner', 'outer', 'thick',
+        and 'subpixel'. Default is 'inner'.
+    connectivity : int, optional
+        The connectivity defining the neighborhood of a pixel. Default is 1.
+    background : int, optional
+        The value representing the background in the segmentation mask. Default
+        is 0.
+    linewidth : int, optional
+        The thickness of the boundary lines. Default is 1 (pixel).
 
     Returns
     -------
     np.ndarray
         RGB image with segmentation boundaries overlaid.
     """
-    segmentation_boundaries = find_segmentation_boundaries(segmentation_mask) > 0
+    segmentation_boundaries = (
+        find_segmentation_boundaries(
+            segmentation_mask,
+            mode=mode,
+            connectivity=connectivity,
+            background=background,
+            linewidth=linewidth,
+        )
+        > 0
+    )
 
     img_rgb_boundary = img_rgb.copy()
     img_rgb_boundary[segmentation_boundaries] = boundary_color_rgb
