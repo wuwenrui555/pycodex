@@ -355,6 +355,7 @@ def _save_marker_dict_for_segmentation(
 def _get_marker_dict(
     unit_dir: Union[Path, str],
     ometiff_path: Union[Path, str, None] = None,
+    marker_dict: dict[str, np.ndarray] = None,
 ) -> dict[str, np.ndarray]:
     """
     Get marker dictionary from OME-TIFF file in the specified directory.
@@ -375,6 +376,9 @@ def _get_marker_dict(
         Dictionary containing marker names as keys and corresponding images as
         values.
     """
+    if marker_dict is not None:
+        return marker_dict
+
     if ometiff_path is None:
         pattern = re.compile(r".*\.ome\.tif[f]?", re.IGNORECASE)
         ometiff_paths = [f for f in unit_dir.glob("*") if pattern.match(f.name)]
@@ -407,6 +411,7 @@ def run_segmentation_mesmer_cell(
     interior_threshold: float = 0.20,
     tag: str = None,
     ometiff_path: str = None,
+    marker_dict: dict[str, np.ndarray] = None,
     num_threads: int = 8,
 ):
     """
@@ -451,6 +456,10 @@ def run_segmentation_mesmer_cell(
     ometiff_path : str, optional
         Path to the OME-TIFF file containing the marker images for segmentation.
         Defaults to None, using the only OME-TIFF file in `unit_dir`.
+    marker_dict : dict[str, np.ndarray], optional
+        Dictionary containing marker names as keys and corresponding images as
+        values. If provided, it will be used directly instead of loading from
+        `ometiff_path` or searching in `unit_dir`. Defaults to None.
     num_threads : int, optional
         The number of threads to use for writing the OME-TIFF file. Defaults to 8.
     """
@@ -465,7 +474,9 @@ def run_segmentation_mesmer_cell(
     setup_logging(segmentation_dir / "segmentation.log")
 
     # Load OME-TIFF file
-    marker_dict = _get_marker_dict(unit_dir=unit_dir, ometiff_path=ometiff_path)
+    marker_dict = _get_marker_dict(
+        unit_dir=unit_dir, ometiff_path=ometiff_path, marker_dict=marker_dict
+    )
     logging.info(f"OME-TIFF file loaded: {ometiff_path}.")
 
     # Check whether selected markers are present in the OME-TIFF file
@@ -579,6 +590,7 @@ def run_segmentation_mesmer_compartments(
     interior_threshold: float = 0.20,
     tag: str = None,
     ometiff_path: str = None,
+    marker_dict: dict[str, np.ndarray] = None,
     num_threads: int = 8,
 ):
     """
@@ -624,6 +636,10 @@ def run_segmentation_mesmer_compartments(
     ometiff_path : str, optional
         Path to the OME-TIFF file containing the marker images for segmentation.
         Defaults to None, using the only OME-TIFF file in `unit_dir`.
+    marker_dict : dict[str, np.ndarray], optional
+        Dictionary containing marker names as keys and corresponding images as
+        values. If provided, it will be used directly instead of loading from
+        `ometiff_path` or searching in `unit_dir`. Defaults to None.
     num_threads : int, optional
         The number of threads to use for writing the OME-TIFF file. Defaults to 8.
     """
@@ -638,7 +654,9 @@ def run_segmentation_mesmer_compartments(
     setup_logging(segmentation_dir / "segmentation.log")
 
     # Load OME-TIFF file
-    marker_dict = _get_marker_dict(unit_dir=unit_dir, ometiff_path=ometiff_path)
+    marker_dict = _get_marker_dict(
+        unit_dir=unit_dir, ometiff_path=ometiff_path, marker_dict=marker_dict
+    )
     logging.info(f"OME-TIFF file loaded: {ometiff_path}.")
 
     # Check whether selected markers are present in the OME-TIFF file
